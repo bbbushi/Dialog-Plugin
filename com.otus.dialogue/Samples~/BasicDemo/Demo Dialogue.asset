@@ -1,0 +1,41 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3c8d4875a82eb72419ff613980a8f783, type: 3}
+  m_Name: Demo Dialogue
+  m_EditorClassIdentifier: 
+  nodes:
+  - id: n1
+    speaker: {fileID: 11400000, guid: 22fd34fa67715a84295ba56d554c36ee, type: 2}
+    speakerName: "\u65C5\u4EBA"
+    text: "\u8FD9\u91CC\u662F\u2026\u2026\u4EC0\u4E48\u5730\u65B9\uFF1F"
+    nextId: 
+  - id: n2
+    speaker: {fileID: 11400000, guid: ae02c379459cf194482353a91b8d4820, type: 2}
+    speakerName: "\u5B66\u8005"
+    text: "\u6B22\u8FCE\u6765\u5230\u6D4B\u8BD5\u7528\u7684\u5BF9\u8BDD\u7CFB\u7EDF\u3002\u6211\u662F\u8D1F\u8D23\u6F14\u793A\u7684\u5B66\u8005\u3002"
+    nextId: 
+  - id: n3
+    speaker: {fileID: 11400000, guid: ae02c379459cf194482353a91b8d4820, type: 2}
+    speakerName: "\u5B66\u8005"
+    text: "\u4F60\u73B0\u5728\u770B\u5230\u7684\u6BCF\u4E00\u4E2A\u5B57\uFF0C\u90FD\u6765\u81EA\u9010\u5B57\u663E\u793A\u7684\u6253\u5B57\u673A\u6548\u679C\u3002"
+    nextId: 
+  - id: n4
+    speaker: {fileID: 11400000, guid: 22fd34fa67715a84295ba56d554c36ee, type: 2}
+    speakerName: "\u65C5\u4EBA"
+    text: "\u70B9\u51FB\u9F20\u6807\u5DE6\u952E\uFF0C\u6216\u8005\u6309\u4E0B\u7A7A\u683C\u952E\uFF0C\u5C31\u53EF\u4EE5\u7ACB\u523B\u663E\u793A\u5168\u90E8\u6587\u5B57\uFF0C\u6216\u8005\u63A8\u8FDB\u5230\u4E0B\u4E00\u53E5\u3002"
+    nextId: 
+  - id: n5
+    speaker: {fileID: 11400000, guid: ae02c379459cf194482353a91b8d4820, type: 2}
+    speakerName: "\u5B66\u8005"
+    text: "\u90A3\u4E48\uFF0C\u6F14\u793A\u5230\u6B64\u7ED3\u675F\u3002\u795D\u4F60\u7684\u5F00\u53D1\u4E00\u5207\u987A\u5229\uFF01"
+    nextId: 
+  styleOverride: {fileID: 0}

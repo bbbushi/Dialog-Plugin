@@ -1,0 +1,21 @@
+{
+  "name": "com.otus.dialogue",
+  "version": "1.0.0",
+  "displayName": "Otus Dialogue System",
+  "description": "数据驱动的对话系统：卡片式节点编辑器（下拉防断链 + 校验器）、免 Play 试玩预览、角色 Speaker 资产（头像/名字颜色）、每对话样式覆盖。对齐商业对话工具的核心工作流。",
+  "unity": "2022.3",
+  "author": {
+    "name": "Otus"
+  },
+  "dependencies": {
+    "com.unity.ugui": "1.0.0",
+    "com.unity.textmeshpro": "3.0.6"
+  },
+  "samples": [
+    {
+      "displayName": "Basic Demo",
+      "description": "示例对话（旅人与学者）+ 两个 Speaker 角色。导入后运行菜单 Dialogue > Setup All 完成接线。",
+      "path": "Samples~/BasicDemo"
+    }
+  ]
+}

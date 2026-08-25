@@ -1,0 +1,11 @@
+{
+    "name": "Dialogue.Tests",
+    "references": [
+        "Dialogue"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "autoReferenced": false,
+    "testAssemblies": true
+}

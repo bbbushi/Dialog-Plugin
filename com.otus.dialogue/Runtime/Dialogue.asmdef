@@ -1,0 +1,8 @@
+{
+    "name": "Dialogue",
+    "references": [
+        "Unity.TextMeshPro",
+        "UnityEngine.UI"
+    ],
+    "autoReferenced": true
+}
