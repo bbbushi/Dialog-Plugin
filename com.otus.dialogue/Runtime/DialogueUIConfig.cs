@@ -20,6 +20,10 @@ public class DialogueUIConfig : ScriptableObject
 
     [SerializeField] private Color speakerColor = new Color32(0x7A, 0x3B, 0x2E, 0xFF); // 红棕
 
+    [SerializeField] private Color choiceColor = new Color32(0xF5, 0xE9, 0xD0, 0xF2); // 选项按钮底色（淡纸色半透明）
+
+    [SerializeField] private Color choiceTextColor = new Color32(0x5A, 0x46, 0x32, 0xFF); // 选项文字（中棕）
+
     [SerializeField, Min(1f)] private float charactersPerSecond = 30f;
 
     public TMP_FontAsset Font => font;
@@ -33,6 +37,10 @@ public class DialogueUIConfig : ScriptableObject
     public Color TextColor => textColor;
 
     public Color SpeakerColor => speakerColor;
+
+    public Color ChoiceColor => choiceColor;
+
+    public Color ChoiceTextColor => choiceTextColor;
 
     public float CharactersPerSecond => charactersPerSecond;
 }

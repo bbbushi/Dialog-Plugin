@@ -1,10 +1,11 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// 对话节点：一段说话内容 + 跳转。
-/// nextId 留空 = 顺序播放下一个节点（末尾留空 = 结束）；
-/// nextId 非空 = 跳转到指定 id 节点（为将来分支选项预留，加分支时零数据迁移）。
+/// 对话节点：一段说话内容 + 跳转/选项分支。
+/// 流转优先级：choices 非空 → 玩家选项决定去向（nextId 被忽略）；
+/// choices 为空：nextId 留空 = 顺序播放下一个节点（末尾留空 = 结束），nextId 非空 = 跳转。
 /// </summary>
 [Serializable]
 public class DialogueNode
@@ -19,6 +20,8 @@ public class DialogueNode
 
     [SerializeField] private string nextId;
 
+    [SerializeField] private List<DialogueChoice> choices; // 玩家选项分支（空 = 无选项，保持线性/跳转）
+
     public string Id => id;
 
     public SpeakerAsset Speaker => speaker;
@@ -31,4 +34,9 @@ public class DialogueNode
     public string Text => text;
 
     public string NextId => nextId;
+
+    public IReadOnlyList<DialogueChoice> Choices => choices;
+
+    /// <summary>是否有玩家选项（运行时与预览窗共用此判定，防两处漂移）。</summary>
+    public bool HasChoices => choices != null && choices.Count > 0;
 }

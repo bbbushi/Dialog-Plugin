@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -8,9 +9,31 @@ using UnityEngine;
 [CreateAssetMenu(fileName = "NewDialogue", menuName = "Dialogue/Dialogue Asset")]
 public class DialogueAsset : ScriptableObject
 {
+    /// <summary>节点图编辑器的节点画布位置（仅编辑器呈现用，运行时不读）。</summary>
+    [Serializable]
+    public class NodeLayout
+    {
+        [SerializeField] private string nodeId;
+        [SerializeField] private float x;
+        [SerializeField] private float y;
+
+        public NodeLayout(string nodeId, float x, float y)
+        {
+            this.nodeId = nodeId;
+            this.x = x;
+            this.y = y;
+        }
+
+        public string NodeId => nodeId;
+        public float X => x;
+        public float Y => y;
+    }
+
     [SerializeField] private List<DialogueNode> nodes = new List<DialogueNode>();
 
     [SerializeField] private DialogueUIConfig styleOverride; // 每对话样式覆盖（空 = 用全局默认）
+
+    [SerializeField] private List<NodeLayout> layout = new List<NodeLayout>(); // 节点图坐标（id 对齐，幂等读写）
 
     public IReadOnlyList<DialogueNode> Nodes => nodes;
 
@@ -20,6 +43,35 @@ public class DialogueAsset : ScriptableObject
     public DialogueUIConfig ResolveStyle(DialogueUIConfig globalDefault)
     {
         return styleOverride != null ? styleOverride : globalDefault;
+    }
+
+    /// <summary>取节点图坐标；无记录时返回 null（编辑器用默认瀑布布局）。</summary>
+    public NodeLayout GetLayout(string nodeId)
+    {
+        for (int i = 0; i < layout.Count; i++)
+        {
+            if (layout[i].NodeId == nodeId)
+            {
+                return layout[i];
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>写节点图坐标（存在则覆盖，不存在则追加）；仅编辑器调用，配合 Undo.RecordObject。</summary>
+    public void SetLayout(string nodeId, float x, float y)
+    {
+        for (int i = 0; i < layout.Count; i++)
+        {
+            if (layout[i].NodeId == nodeId)
+            {
+                layout[i] = new NodeLayout(nodeId, x, y);
+                return;
+            }
+        }
+
+        layout.Add(new NodeLayout(nodeId, x, y));
     }
 
     public DialogueNode GetStartNode()

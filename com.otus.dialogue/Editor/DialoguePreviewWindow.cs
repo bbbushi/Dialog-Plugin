@@ -5,7 +5,7 @@ using UnityEngine;
 
 /// <summary>
 /// 对话免 Play 试玩窗口（IMGUI 实现）。
-/// 推进语义与运行时同源——一律走 DialogueAsset.GetNext()，预览行为永不与运行时漂移。
+/// 推进语义与运行时同源——线性走 DialogueAsset.GetNext()，选项走 SelectChoice()（HasChoices 判定），预览行为永不与运行时漂移。
 /// 只读资产、零序列化副作用；语速/配色读 DialogueUIConfig，观感接近运行时（非逐像素一致）。
 /// </summary>
 public class DialoguePreviewWindow : EditorWindow
@@ -92,6 +92,11 @@ public class DialoguePreviewWindow : EditorWindow
             return;
         }
 
+        if (_current.HasChoices) // 选项节点：点击/键盘不推进，必须点选按钮（对齐运行时 Choosing）
+        {
+            return;
+        }
+
         var next = _asset.GetNext(_current);
         if (next != null)
         {
@@ -109,6 +114,31 @@ public class DialoguePreviewWindow : EditorWindow
 
     /// <summary>自动化查询：当前已播放节点序列（路径链）。</summary>
     public IReadOnlyList<DialogueNode> VisitedChain => _visitedChain;
+
+    /// <summary>
+    /// 点选一个玩家选项（与运行时 OnChoiceSelected 同语义）：
+    /// nextId 为空或断链 → LogError 并结束；否则进入目标节点（VisitedChain 记录分支路径）。自动化同用。
+    /// </summary>
+    public void SelectChoice(int index)
+    {
+        if (_state != PreviewState.WaitingAdvance || _current == null || !_current.HasChoices
+            || index < 0 || index >= _current.Choices.Count)
+        {
+            return;
+        }
+
+        var choice = _current.Choices[index];
+        var next = string.IsNullOrEmpty(choice.NextId) ? null : _asset.FindNode(choice.NextId);
+        if (next == null)
+        {
+            Debug.LogError($"[Dialogue] 选项 \"{choice.Text}\" 的跳转目标 \"{choice.NextId}\" 无效，对话结束。");
+            _state = PreviewState.Finished;
+            Repaint();
+            return;
+        }
+
+        EnterNode(next);
+    }
 
     private void OnEnable()
     {
@@ -191,6 +221,7 @@ public class DialoguePreviewWindow : EditorWindow
 
         DrawDialoguePanel();
         EditorGUILayout.Space(4);
+        DrawChoices();
         DrawPathSidebar();
     }
 
@@ -270,8 +301,8 @@ public class DialoguePreviewWindow : EditorWindow
             var bodyRect = new RectOffset(leftPad, 40, 52, 34).Remove(panelRect);
             GUI.Label(bodyRect, plain.Substring(0, visible), _bodyStyle);
 
-            // ▼ 等待推进指示（静态）
-            if (_state == PreviewState.WaitingAdvance)
+            // ▼ 等待推进指示（静态；有选项时不提示继续，去向待点选）
+            if (_state == PreviewState.WaitingAdvance && !_current.HasChoices)
             {
                 var arrowRect = new Rect(panelRect.xMax - 46, panelRect.yMax - 36, 30, 26);
                 GUI.Label(arrowRect, "▼", _arrowStyle);
@@ -280,6 +311,26 @@ public class DialoguePreviewWindow : EditorWindow
         else
         {
             GUI.Label(new RectOffset(20, 20, 20, 20).Remove(panelRect), "（空资产：没有任何节点）", EditorStyles.label);
+        }
+    }
+
+    /// <summary>玩家选项按钮（画在面板下方，不遮正文）；点选面板/按空格在此状态下无效（Advance 已守卫）。</summary>
+    private void DrawChoices()
+    {
+        if (_state != PreviewState.WaitingAdvance || _current == null || !_current.HasChoices)
+        {
+            return;
+        }
+
+        var choices = _current.Choices;
+        for (int i = 0; i < choices.Count; i++)
+        {
+            EditorGUILayout.Space(6);
+            Rect rect = GUILayoutUtility.GetRect(220, 30, GUILayout.Width(220), GUILayout.Height(30));
+            if (GUI.Button(rect, $"{i + 1}. {choices[i].Text}"))
+            {
+                SelectChoice(i);
+            }
         }
     }
 
@@ -308,16 +359,23 @@ public class DialoguePreviewWindow : EditorWindow
             bool isCurrentLast = _visitedChain.Count > 0 && ReferenceEquals(_visitedChain[_visitedChain.Count - 1], _current);
             GUILayout.Label(sb.ToString() + (isCurrentLast ? "（当前）" : ""), _pathStyle);
 
-            // 预告下一句
-            var next = _asset.GetNext(_current);
-            if (next != null)
+            // 预告下一句（有选项时去向未定，GetNext 的结果会被运行时忽略，不做预告防误导）
+            if (_current != null && _current.HasChoices)
             {
-                int index = IndexOfNode(next);
-                GUILayout.Label($"下一句：{(index >= 0 ? $"#{index + 1} " : "")}{next.Id} · {Truncate(next.Text, 18)}", EditorStyles.miniLabel);
+                GUILayout.Label("下一句：由玩家选项决定", EditorStyles.miniLabel);
             }
-            else if (_state == PreviewState.WaitingAdvance)
+            else
             {
-                GUILayout.Label("下一句：■ 对话将结束", EditorStyles.miniLabel);
+                var next = _asset.GetNext(_current);
+                if (next != null)
+                {
+                    int index = IndexOfNode(next);
+                    GUILayout.Label($"下一句：{(index >= 0 ? $"#{index + 1} " : "")}{next.Id} · {Truncate(next.Text, 18)}", EditorStyles.miniLabel);
+                }
+                else if (_state == PreviewState.WaitingAdvance)
+                {
+                    GUILayout.Label("下一句：■ 对话将结束", EditorStyles.miniLabel);
+                }
             }
         }
     }

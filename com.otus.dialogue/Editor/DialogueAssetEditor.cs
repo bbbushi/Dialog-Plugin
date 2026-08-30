@@ -96,6 +96,11 @@ public class DialogueAssetEditor : Editor
                 DialoguePreviewWindow.Open(asset);
             }
 
+            if (GUILayout.Button("打开节点图", EditorStyles.toolbarButton))
+            {
+                DialogueGraphWindow.Open(asset); // 同 asmdef 直接调用，无需反射
+            }
+
             GUILayout.FlexibleSpace();
             GUILayout.Label($"共 {_nodes.arraySize} 句", EditorStyles.miniLabel);
         }
@@ -203,6 +208,8 @@ public class DialogueAssetEditor : Editor
         var speakerAssetProp = node.FindPropertyRelative("speaker");
         var textProp = node.FindPropertyRelative("text");
         var nextIdProp = node.FindPropertyRelative("nextId");
+        var choicesProp = node.FindPropertyRelative("choices");
+        int choiceCount = choicesProp != null ? choicesProp.arraySize : 0; // HasChoices 的 SerializedProperty 判定
 
         string key = CardKey(i, idProp.stringValue);
         bool expanded = _foldoutById.TryGetValue(key, out bool value) && value;
@@ -222,7 +229,7 @@ public class DialogueAssetEditor : Editor
                 }
 
                 string resolvedSpeaker = ResolveSpeakerDisplay(node);
-                string summary = BuildSummary(i, idProp.stringValue, resolvedSpeaker, textProp.stringValue, nextIdProp.stringValue, total);
+                string summary = BuildSummary(i, idProp.stringValue, resolvedSpeaker, textProp.stringValue, nextIdProp.stringValue, total, choiceCount);
                 if (GUILayout.Button(summary, EditorStyles.label, GUILayout.MinWidth(0)))
                 {
                     _foldoutById[key] = !expanded;
@@ -251,7 +258,19 @@ public class DialogueAssetEditor : Editor
                 }
 
                 EditorGUILayout.PropertyField(textProp, new GUIContent("正文"));
-                DrawNextIdPopup(nextIdProp, i, total);
+
+                // 选项接管后 nextId 不生效：置灰防误配
+                using (new EditorGUI.DisabledScope(choiceCount > 0))
+                {
+                    DrawNextIdPopup(nextIdProp, i, total);
+                }
+
+                if (choiceCount > 0)
+                {
+                    EditorGUILayout.LabelField("已由选项接管", EditorStyles.miniLabel);
+                }
+
+                DrawChoicesSection(choicesProp, total);
 
                 // id 重命名同步提示
                 if (_lastSyncForId == idProp.stringValue && !string.IsNullOrEmpty(_lastSyncMessage))
@@ -310,14 +329,15 @@ public class DialogueAssetEditor : Editor
         _cardRects[i] = GUILayoutUtility.GetLastRect();
     }
 
-    /// <summary>折叠态头部摘要：#序号 id [说话人] 文本预览 → 下一句走向。</summary>
-    private static string BuildSummary(int i, string id, string speaker, string text, string nextId, int total)
+    /// <summary>折叠态头部摘要：#序号 id [说话人] 文本预览 → 下一句走向 [◆N选项]。纯字符串拼接。</summary>
+    private static string BuildSummary(int i, string id, string speaker, string text, string nextId, int total, int choiceCount)
     {
         string displayId = string.IsNullOrEmpty(id) ? "（无 id）" : id;
         string displaySpeaker = string.IsNullOrEmpty(speaker) ? "旁白" : speaker;
         string preview = Truncate(text.Replace("\n", " "), 14);
         string next = DescribeNext(nextId, i, total, null);
-        return $"#{i + 1}  {displayId}  [{displaySpeaker}]  {preview}   {next}";
+        string choices = choiceCount > 0 ? $" ◆{choiceCount}选项" : string.Empty;
+        return $"#{i + 1}  {displayId}  [{displaySpeaker}]  {preview}   {next}{choices}";
     }
 
     private static string DescribeNext(string nextId, int i, int total, List<string> allIds)
@@ -434,6 +454,88 @@ public class DialogueAssetEditor : Editor
         var options = labels.Select(l => new GUIContent(l)).ToArray();
         EditorGUI.BeginChangeCheck();
         int picked = EditorGUILayout.Popup(NextLabel, selected, options, style);
+        if (EditorGUI.EndChangeCheck() && picked >= 0 && picked < values.Count)
+        {
+            nextIdProp.stringValue = values[picked];
+        }
+    }
+
+    // ---------- 玩家选项（choices 列表）----------
+
+    private void DrawChoicesSection(SerializedProperty choicesProp, int total)
+    {
+        EditorGUILayout.Space(2);
+        EditorGUILayout.LabelField("玩家选项", EditorStyles.boldLabel);
+        EditorGUI.indentLevel++;
+
+        for (int c = 0; c < choicesProp.arraySize; c++)
+        {
+            var choice = choicesProp.GetArrayElementAtIndex(c);
+            var textProp = choice.FindPropertyRelative("text");
+            var nextIdProp = choice.FindPropertyRelative("nextId");
+
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                EditorGUILayout.PropertyField(textProp, GUIContent.none,
+                    GUILayout.Width(EditorGUIUtility.currentViewWidth * 0.55f)); // 文案占宽 ~60%，右侧留给跳转
+
+                DrawChoiceTargetPopup(nextIdProp, total);
+
+                if (GUILayout.Button("−", EditorStyles.miniButton, GUILayout.Width(22)))
+                {
+                    choicesProp.DeleteArrayElementAtIndex(c);
+                }
+            }
+        }
+
+        if (choicesProp.arraySize == 0)
+        {
+            EditorGUILayout.LabelField("无选项（走『下一句』流转）", EditorStyles.miniLabel);
+        }
+
+        if (GUILayout.Button("＋ 添加选项", EditorStyles.miniButton, GUILayout.Width(90)))
+        {
+            choicesProp.arraySize++;
+            var added = choicesProp.GetArrayElementAtIndex(choicesProp.arraySize - 1);
+            added.FindPropertyRelative("text").stringValue = string.Empty;
+            added.FindPropertyRelative("nextId").stringValue = string.Empty;
+        }
+
+        EditorGUI.indentLevel--;
+    }
+
+    /// <summary>选项跳转目标下拉：列全部节点 id，空首项「（未设置）」，写值走 SerializedProperty。</summary>
+    private void DrawChoiceTargetPopup(SerializedProperty nextIdProp, int total)
+    {
+        var labels = new List<string> { "（未设置）" };
+        var values = new List<string> { string.Empty };
+
+        for (int j = 0; j < total; j++)
+        {
+            var other = _nodes.GetArrayElementAtIndex(j);
+            string otherId = other.FindPropertyRelative("id").stringValue;
+            if (string.IsNullOrEmpty(otherId))
+            {
+                continue; // 无 id 的节点无法被跳转引用
+            }
+
+            labels.Add($"#{j + 1} · {otherId}");
+            values.Add(otherId);
+        }
+
+        // 断链兜底：当前值非空但不在选项中（目标被删/改名）
+        string current = nextIdProp.stringValue;
+        if (!string.IsNullOrEmpty(current) && !values.Contains(current))
+        {
+            labels.Insert(1, $"⚠ 断链：{current}");
+            values.Insert(1, current);
+        }
+
+        int selected = Mathf.Max(0, values.IndexOf(current));
+
+        var options = labels.Select(l => new GUIContent(l)).ToArray();
+        EditorGUI.BeginChangeCheck();
+        int picked = EditorGUILayout.Popup(GUIContent.none, selected, options, GUILayout.MinWidth(70));
         if (EditorGUI.EndChangeCheck() && picked >= 0 && picked < values.Count)
         {
             nextIdProp.stringValue = values[picked];

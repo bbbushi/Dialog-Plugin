@@ -13,7 +13,7 @@ public class DialogueManager : MonoBehaviour
     public const string ConfigResourcePath = "DialogueUIConfig";
     private const float DefaultCharactersPerSecond = 30f;
 
-    private enum State { Idle, Typing, WaitingAdvance }
+    private enum State { Idle, Typing, WaitingAdvance, Choosing }
 
     public static DialogueManager Instance { get; private set; }
 
@@ -107,7 +107,9 @@ public class DialogueManager : MonoBehaviour
 
         // 输入推进：打字中→立即补全；已显示完→下一句/结束。
         // 帧守卫：点 Cube 启动对话的那一帧，同一次点击不能又推进第一句。
-        bool pressed = Time.frameCount > _startFrame
+        // Choosing 守卫：选项点击本身也走鼠标按下，不能同帧再被推进逻辑捕获；选项期间按空格也无效。
+        bool pressed = _state != State.Choosing
+            && Time.frameCount > _startFrame
             && (Input.GetMouseButtonDown(0) || Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Return));
         if (pressed)
         {
@@ -176,6 +178,13 @@ public class DialogueManager : MonoBehaviour
             return;
         }
 
+        if (_current.HasChoices)
+        {
+            _ui.ShowChoices(_current.Choices, OnChoiceSelected);
+            _state = State.Choosing;
+            return; // 有选项时 nextId 被忽略，去向由玩家点选决定
+        }
+
         var next = _asset.GetNext(_current);
         if (next != null)
         {
@@ -185,6 +194,28 @@ public class DialogueManager : MonoBehaviour
         {
             EndDialogue();
         }
+    }
+
+    /// <summary>玩家点选选项：防重入 + 断链兜底（编辑期漏配不该静默卡死或静默结束）。</summary>
+    private void OnChoiceSelected(int index)
+    {
+        if (_state != State.Choosing)
+        {
+            return;
+        }
+
+        var nextId = _current.Choices[index].NextId;
+        _ui.HideChoices();
+
+        var next = string.IsNullOrEmpty(nextId) ? null : _asset.FindNode(nextId);
+        if (next == null)
+        {
+            Debug.LogError($"[Dialogue] 选项 nextId \"{nextId}\" 无效（节点 {_current.Id}），强制结束对话。");
+            EndDialogue();
+            return;
+        }
+
+        EnterNode(next);
     }
 
     private void EndDialogue()

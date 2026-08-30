@@ -47,7 +47,7 @@ public static class DialogueSetupTool
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
-        Debug.Log("[Dialogue Setup] 全部完成：中文字体、sprite border（含头像框）、UI 配置、Speaker 资产、Demo 对话与 Cube 接线。进入 Play Mode 后点击 Cube 即可看到对话（左侧角色头像 + 无图首字缩写）。\n" +
+        Debug.Log("[Dialogue Setup] 全部完成：中文字体、sprite border（含头像框）、UI 配置、Speaker 资产、Demo 对话与 Cube 接线。Demo 已含选项分支演示（n2 两选项）。进入 Play Mode 后点击 Cube 即可看到对话（左侧角色头像 + 无图首字缩写）。\n" +
                   "策划提示：① 选中 Demo Dialogue 用卡片编辑器修改，试试把「下一句」下拉改为跳转，再用 Dialogue > Open Preview 免 Play 预览；② 右键 Create > Dialogue > Speaker 新建角色（配头像/名字颜色）；③ 选中 DialogueUIConfig 资产可在样式编辑器里调字体/背景/颜色，每段对话可在 Inspector 里「创建新样式…」单独覆盖。");
     }
 
@@ -260,7 +260,14 @@ public static class DialogueSetupTool
             node.FindPropertyRelative("speakerName").stringValue = data[i, 1]; // 旧字段照旧写入（fallback 兼容演示）
             node.FindPropertyRelative("text").stringValue = data[i, 2];
             node.FindPropertyRelative("nextId").stringValue = string.Empty; // 全部留空 = 纯线性
+            node.FindPropertyRelative("choices").ClearArray(); // 清残留选项：历史数据按 index 复位时旧的 choices 会串节点
         }
+
+        // n2 挂两条选项分支（ClearArray 幂等，重跑不叠加）
+        var n2Choices = nodes.GetArrayElementAtIndex(1).FindPropertyRelative("choices");
+        n2Choices.ClearArray();
+        AddChoice(n2Choices, "追问学者", "n3");
+        AddChoice(n2Choices, "转身离开", "n4");
 
         so.ApplyModifiedPropertiesWithoutUndo();
         EditorUtility.SetDirty(demo);
@@ -285,5 +292,13 @@ public static class DialogueSetupTool
         EditorUtility.SetDirty(cube);
         UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
         Debug.Log($"[Dialogue Setup] Demo 对话已生成：{DemoAssetPath}；Cube 已挂 DialogueDemoTrigger（记得保存场景 Ctrl+S）。");
+    }
+
+    private static void AddChoice(SerializedProperty choicesProp, string text, string nextId)
+    {
+        choicesProp.arraySize++;
+        var choice = choicesProp.GetArrayElementAtIndex(choicesProp.arraySize - 1);
+        choice.FindPropertyRelative("text").stringValue = text;
+        choice.FindPropertyRelative("nextId").stringValue = nextId;
     }
 }

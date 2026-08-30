@@ -1,11 +1,15 @@
+using System;
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 /// <summary>
 /// 运行时构建的对话 UI（纸质风格 + 左侧角色头像）。由 DialogueManager 持有的普通类，非 MonoBehaviour。
 /// 层级：DialogueCanvas > Panel(纸面) > PortraitFrame(头像框) > PortraitImage/PortraitInitial
-///                                    > NamePlate(姓名牌) > NameText / BodyText / ContinueArrow。
+///                                    > NamePlate(姓名牌) > NameText / BodyText / ContinueArrow
+///                  > ChoiceRoot(玩家选项容器，按需激活) + DialogueEventSystem(Button 点击依赖)。
 /// Build 只建结构，样式赋值统一走 ApplyStyle（单点，杜绝两处漂移）。
 /// </summary>
 public class DialogueUI
@@ -18,6 +22,7 @@ public class DialogueUI
     private const float BodyIndentX = 140f;    // 有头像时正文左边距
 
     private GameObject _panel;
+    private GameObject _choiceRoot;
     private GameObject _namePlate;
     private TextMeshProUGUI _name;
     private TextMeshProUGUI _body;
@@ -134,6 +139,28 @@ public class DialogueUI
         arrowRect.pivot = new Vector2(1, 0);
         arrowRect.anchoredPosition = new Vector2(-16, 26);
 
+        // ---- ChoiceRoot：玩家选项容器，悬浮于面板上方；ShowChoices 时才激活 ----
+        _choiceRoot = new GameObject("ChoiceRoot", typeof(RectTransform));
+        _choiceRoot.transform.SetParent(canvasGo.transform, false);
+        var choiceRect = (RectTransform)_choiceRoot.transform;
+        choiceRect.anchorMin = new Vector2(0.5f, 1f);
+        choiceRect.anchorMax = new Vector2(0.5f, 1f);
+        choiceRect.pivot = new Vector2(0.5f, 1f);
+        choiceRect.anchoredPosition = new Vector2(0, -36f);
+        var choiceLayout = _choiceRoot.AddComponent<VerticalLayoutGroup>();
+        choiceLayout.spacing = 8f;
+        choiceLayout.childForceExpandWidth = false;
+        choiceLayout.childForceExpandHeight = false;
+        choiceLayout.childControlWidth = true;
+        choiceLayout.childControlHeight = true;
+        var choiceFitter = _choiceRoot.AddComponent<ContentSizeFitter>();
+        choiceFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        _choiceRoot.SetActive(false);
+
+        // ---- EventSystem：项目场景零摆放且无处保证有 EventSystem，Button 点击依赖它，这里自举 ----
+        var eventSystemGo = new GameObject("DialogueEventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
+        eventSystemGo.transform.SetParent(canvasGo.transform, false);
+
         _panel.SetActive(false); // 默认隐藏（只隐藏 Panel；Manager 常驻，规避自激活陷阱）
 
         ApplyStyle(cfg); // 样式赋值单点（含 cfg 为 null 的兜底）
@@ -230,6 +257,63 @@ public class DialogueUI
     public void SetContinueVisible(bool visible)
     {
         _arrow.gameObject.SetActive(visible);
+    }
+
+    /// <summary>
+    /// 展示玩家选项按钮；点击后经 onSelected 回传索引，跳转与收尾由 Manager 负责。
+    /// </summary>
+    public void ShowChoices(IReadOnlyList<DialogueChoice> choices, Action<int> onSelected)
+    {
+        ClearChildren(_choiceRoot.transform);
+
+        Color bg = _activeConfig != null ? _activeConfig.ChoiceColor : new Color(0.96f, 0.91f, 0.82f, 0.95f);
+        Color fg = _activeConfig != null ? _activeConfig.ChoiceTextColor : new Color(0.35f, 0.22f, 0.12f, 1f);
+
+        for (int i = 0; i < choices.Count; i++)
+        {
+            var go = new GameObject($"Choice_{i}", typeof(Image), typeof(Button), typeof(LayoutElement));
+            go.transform.SetParent(_choiceRoot.transform, false);
+
+            var image = go.GetComponent<Image>();
+            image.color = bg;
+            image.raycastTarget = true; // 底图不参与射线检测则按钮永远点不中
+
+            var element = go.GetComponent<LayoutElement>();
+            element.minHeight = 40f;
+            element.preferredWidth = 360f;
+
+            int index = i; // for 循环变量被所有闭包共享，必须拷贝局部副本
+            go.GetComponent<Button>().onClick.AddListener(() => onSelected?.Invoke(index));
+
+            var label = CreateText("Label", go.transform, _activeConfig?.Font);
+            label.text = choices[i].Text;
+            label.fontSize = 24;
+            label.alignment = TextAlignmentOptions.Center;
+            label.color = fg;
+            label.raycastTarget = true; // 与底图一起保证按钮整体可点
+            var labelRect = label.rectTransform;
+            labelRect.anchorMin = Vector2.zero;
+            labelRect.anchorMax = Vector2.one;
+            labelRect.offsetMin = Vector2.zero;
+            labelRect.offsetMax = Vector2.zero;
+        }
+
+        _choiceRoot.SetActive(true);
+    }
+
+    /// <summary>清空并隐藏选项容器（选项被点击后由 Manager 调用）。</summary>
+    public void HideChoices()
+    {
+        ClearChildren(_choiceRoot.transform);
+        _choiceRoot.SetActive(false);
+    }
+
+    private static void ClearChildren(Transform root)
+    {
+        for (int i = root.childCount - 1; i >= 0; i--)
+        {
+            UnityEngine.Object.Destroy(root.GetChild(i).gameObject); // Object 因 using System 有歧义，全限定；EditMode 下延迟销毁，可接受
+        }
     }
 
     /// <summary>每帧驱动（由 Manager.Update 调用）："▼"上下呼吸。</summary>

@@ -19,6 +19,7 @@ public class DialogueUIConfigEditor : Editor
     private bool _plateFold = true;
     private bool _portraitFold = true;
     private bool _textFold = true;
+    private bool _choiceFold = true;
     private bool _speedFold = true;
 
     // 缓存（projectChanged 失效）——防 Inspector 重绘期间反复 FindAssets 扫盘
@@ -82,6 +83,15 @@ public class DialogueUIConfigEditor : Editor
             EditorGUI.indentLevel++;
             DrawFontPopup(serializedObject.FindProperty("font"));
             DrawColorField("textColor", "正文颜色");
+            EditorGUI.indentLevel--;
+        }
+
+        _choiceFold = EditorGUILayout.Foldout(_choiceFold, "选项按钮", true);
+        if (_choiceFold)
+        {
+            EditorGUI.indentLevel++;
+            DrawColorField("choiceColor", "选项底色");
+            DrawColorField("choiceTextColor", "选项文字色");
             EditorGUI.indentLevel--;
         }
 

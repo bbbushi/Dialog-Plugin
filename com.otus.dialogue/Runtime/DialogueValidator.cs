@@ -6,6 +6,9 @@ public enum DialogueIssueSeverity
 {
     Error,
     Warning,
+
+    /// <summary>合法但易误解的数据，仅提示。</summary>
+    Info,
 }
 
 /// <summary>校验问题类型。</summary>
@@ -34,6 +37,15 @@ public enum DialogueIssueType
 
     /// <summary>nextId 成环，对话永不结束（错误级）。</summary>
     InfiniteLoop,
+
+    /// <summary>选项文案为空（警告级：按钮上无可读文本）。</summary>
+    EmptyChoiceText,
+
+    /// <summary>选项 nextId 为空或指向不存在的节点——选项断链（错误级）。</summary>
+    BrokenChoiceLink,
+
+    /// <summary>choices 非空时节点 nextId 被忽略（提示级：去向由玩家选择决定）。</summary>
+    NextIdIgnoredByChoices,
 }
 
 /// <summary>一条校验结果。NodeIndex = -1 表示资产级问题。</summary>
@@ -60,7 +72,7 @@ public sealed class DialogueIssue
 }
 
 /// <summary>
-/// 对话资产静态校验器：断链 / 重复 id / 空内容 / 不可达 / 死循环。
+/// 对话资产静态校验器：断链 / 重复 id / 空内容 / 选项 / 不可达 / 死循环。
 /// 纯 C#、静默（不写 Console）——供 Inspector 徽标、保存钩子、测试与未来的 LLM 运行时校验共用。
 /// </summary>
 public static class DialogueValidator
@@ -114,6 +126,51 @@ public static class DialogueValidator
             else
             {
                 indexById[id] = i;
+            }
+        }
+
+        // ---- 选项检查（须在 id 索引建完后：选项可前向引用后面的节点）----
+        for (int i = 0; i < nodes.Count; i++)
+        {
+            var node = nodes[i];
+
+            if (node.HasChoices && !string.IsNullOrEmpty(node.NextId))
+            {
+                issues.Add(Issue(DialogueIssueType.NextIdIgnoredByChoices, DialogueIssueSeverity.Info, i, node,
+                    "节点 nextId 将被选项忽略，去向由玩家选择决定。"));
+            }
+
+            var choices = node.Choices;
+            if (choices == null)
+            {
+                continue;
+            }
+
+            for (int c = 0; c < choices.Count; c++)
+            {
+                var choice = choices[c];
+                if (choice == null)
+                {
+                    continue; // 序列化列表不该出现，防御运行时拼装数据
+                }
+
+                if (string.IsNullOrWhiteSpace(choice.Text))
+                {
+                    issues.Add(Issue(DialogueIssueType.EmptyChoiceText, DialogueIssueSeverity.Warning, i, node,
+                        $"选项 #{c + 1} 文案为空。"));
+                }
+
+                string choiceNextId = choice.NextId;
+                if (string.IsNullOrEmpty(choiceNextId))
+                {
+                    issues.Add(Issue(DialogueIssueType.BrokenChoiceLink, DialogueIssueSeverity.Error, i, node,
+                        $"选项 #{c + 1} 未设置跳转目标（断链）。"));
+                }
+                else if (!indexById.ContainsKey(choiceNextId)) // 查自建字典，绝不调 FindNode（会打警告）
+                {
+                    issues.Add(Issue(DialogueIssueType.BrokenChoiceLink, DialogueIssueSeverity.Error, i, node,
+                        $"选项 #{c + 1} 跳转目标 \"{choiceNextId}\" 不存在（断链）。"));
+                }
             }
         }
 
