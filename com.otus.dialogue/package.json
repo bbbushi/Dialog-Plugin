@@ -1,6 +1,6 @@
 {
   "name": "com.otus.dialogue",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "displayName": "Otus Dialogue System",
   "description": "数据驱动的对话系统：卡片式节点编辑器（下拉防断链 + 校验器）、玩家选项分支（变量条件/赋值）、GraphView 节点图编辑器、免 Play 试玩预览、角色 Speaker 资产（头像/名字颜色）、每对话样式覆盖、存档/历史 Backlog/自动播放/快进/已读加速。对齐商业视觉小说工具的核心工作流。",
   "unity": "2022.3",

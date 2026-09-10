@@ -495,6 +495,14 @@ public class DialoguePreviewWindow : EditorWindow
             _baseCps = cfg.CharactersPerSecond; // 预览语速同步跟随每对话样式
         }
 
+        // GUI.Label 鼠标悬停时会切到样式的 hover 状态绘制（默认皮肤 hover 色是浅灰白）。
+        // 共享 GUIStyleState 引用：normal 被配置色覆盖/逐句改色时 hover 自动跟随，避免悬停变白看不清
+        _panelStyle.hover = _panelStyle.normal;
+        _nameStyle.hover = _nameStyle.normal;
+        _bodyStyle.hover = _bodyStyle.normal;
+        _arrowStyle.hover = _arrowStyle.normal;
+        _initialStyle.hover = _initialStyle.normal;
+
         if (font != null)
         {
             _nameStyle.font = font;
