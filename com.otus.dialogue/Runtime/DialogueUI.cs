@@ -28,6 +28,15 @@ public class DialogueUI
     private TextMeshProUGUI _body;
     private TextMeshProUGUI _arrow;
 
+    // 历史窗（HistoryRoot 全屏黑底 > Title / Scroll > Viewport > Content / Hint）
+    private GameObject _historyRoot;
+    private RectTransform _historyContent;
+    private ScrollRect _historyScroll;
+    private TextMeshProUGUI _historyTitle;
+    private TextMeshProUGUI _historyHint;
+    private readonly List<TextMeshProUGUI> _historyEntries = new List<TextMeshProUGUI>(); // ApplyStyle 就地重刷
+    private TextMeshProUGUI _autoBadge;
+
     // ApplyStyle 就地更新目标
     private Image _panelImage;
     private Image _plateImage;
@@ -157,6 +166,96 @@ public class DialogueUI
         choiceFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
         _choiceRoot.SetActive(false);
 
+        // ---- HistoryRoot：全屏历史窗（黑底挡射线），ShowHistory 时才激活 ----
+        _historyRoot = new GameObject("HistoryRoot", typeof(Image));
+        _historyRoot.transform.SetParent(canvasGo.transform, false);
+        var historyBg = _historyRoot.GetComponent<Image>();
+        historyBg.color = new Color(0f, 0f, 0f, 0.85f);
+        historyBg.raycastTarget = true; // 挡住底下对话面板的射线
+        var historyRect = (RectTransform)_historyRoot.transform;
+        historyRect.anchorMin = Vector2.zero;
+        historyRect.anchorMax = Vector2.one;
+        historyRect.offsetMin = Vector2.zero;
+        historyRect.offsetMax = Vector2.zero;
+        _historyRoot.SetActive(false);
+
+        _historyTitle = CreateText("Title", _historyRoot.transform, null);
+        _historyTitle.text = "对话历史";
+        _historyTitle.fontSize = 34;
+        _historyTitle.alignment = TextAlignmentOptions.Center;
+        var titleRect = _historyTitle.rectTransform;
+        titleRect.anchorMin = new Vector2(0, 1);
+        titleRect.anchorMax = new Vector2(1, 1);
+        titleRect.pivot = new Vector2(0.5f, 1f);
+        titleRect.sizeDelta = new Vector2(0, 60f);
+
+        // ScrollView：viewport 用 RectMask2D 裁剪，content 垂直布局 + 高度自适应
+        var scrollGo = new GameObject("HistoryScroll", typeof(RectTransform), typeof(Image), typeof(ScrollRect));
+        scrollGo.transform.SetParent(_historyRoot.transform, false);
+        var scrollBg = scrollGo.GetComponent<Image>();
+        scrollBg.color = Color.clear; // 仅作 ScrollRect 射线落点，纯透明
+        var scrollRectT = (RectTransform)scrollGo.transform;
+        scrollRectT.anchorMin = Vector2.zero;
+        scrollRectT.anchorMax = Vector2.one;
+        scrollRectT.offsetMin = new Vector2(60f, 70f);
+        scrollRectT.offsetMax = new Vector2(-60f, -70f);
+
+        var viewport = new GameObject("Viewport", typeof(RectTransform), typeof(RectMask2D));
+        viewport.transform.SetParent(scrollGo.transform, false);
+        var vpRect = (RectTransform)viewport.transform;
+        vpRect.anchorMin = Vector2.zero;
+        vpRect.anchorMax = Vector2.one;
+        vpRect.offsetMin = Vector2.zero;
+        vpRect.offsetMax = Vector2.zero;
+
+        var contentGo = new GameObject("Content", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
+        contentGo.transform.SetParent(viewport.transform, false);
+        _historyContent = (RectTransform)contentGo.transform;
+        _historyContent.anchorMin = new Vector2(0, 1);
+        _historyContent.anchorMax = new Vector2(1, 1);
+        _historyContent.pivot = new Vector2(0.5f, 1f);
+        _historyContent.sizeDelta = new Vector2(0, 0);
+
+        var contentLayout = contentGo.GetComponent<VerticalLayoutGroup>();
+        contentLayout.spacing = 10f;
+        contentLayout.childForceExpandWidth = false;
+        contentLayout.childForceExpandHeight = false;
+        contentLayout.childControlWidth = true;
+        contentLayout.childControlHeight = true;
+
+        var contentFitter = contentGo.GetComponent<ContentSizeFitter>();
+        contentFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        _historyScroll = scrollGo.GetComponent<ScrollRect>();
+        _historyScroll.viewport = vpRect;
+        _historyScroll.content = _historyContent;
+        _historyScroll.horizontal = false;
+        _historyScroll.movementType = ScrollRect.MovementType.Clamped;
+        _historyScroll.scrollSensitivity = 30f;
+
+        _historyHint = CreateText("Hint", _historyRoot.transform, null);
+        _historyHint.text = "按 H 关闭";
+        _historyHint.fontSize = 20;
+        _historyHint.alignment = TextAlignmentOptions.Center;
+        var hintRect = _historyHint.rectTransform;
+        hintRect.anchorMin = new Vector2(0, 0);
+        hintRect.anchorMax = new Vector2(1, 0);
+        hintRect.pivot = new Vector2(0.5f, 0f);
+        hintRect.sizeDelta = new Vector2(0, 40f);
+
+        // ---- AutoBadge：AUTO 播放角标，悬浮于面板右上（与姓名牌对称）----
+        _autoBadge = CreateText("AutoBadge", _panel.transform, null);
+        _autoBadge.text = "AUTO";
+        _autoBadge.fontSize = 18;
+        _autoBadge.alignment = TextAlignmentOptions.Center;
+        var badgeRect = _autoBadge.rectTransform;
+        badgeRect.anchorMin = new Vector2(1, 1);
+        badgeRect.anchorMax = new Vector2(1, 1);
+        badgeRect.pivot = new Vector2(1, 0);
+        badgeRect.anchoredPosition = new Vector2(-24, -8);
+        badgeRect.sizeDelta = new Vector2(70, 30);
+        _autoBadge.gameObject.SetActive(false);
+
         // ---- EventSystem：项目场景零摆放且无处保证有 EventSystem，Button 点击依赖它，这里自举 ----
         var eventSystemGo = new GameObject("DialogueEventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
         eventSystemGo.transform.SetParent(canvasGo.transform, false);
@@ -243,12 +342,30 @@ public class DialogueUI
             _body.font = cfg.Font;
             _arrow.font = cfg.Font;
             _portraitInitial.font = cfg.Font;
+            _historyTitle.font = cfg.Font;
+            _historyHint.font = cfg.Font;
+            _autoBadge.font = cfg.Font;
         }
 
         _name.color = cfg.SpeakerColor;
         _body.color = cfg.TextColor;
         _arrow.color = cfg.TextColor;
         _portraitInitial.color = cfg.TextColor;
+
+        // 历史窗与角标跟随换肤（黑底上若 cfg.TextColor 偏暗则由配置方自行调亮，此处不做二次加工）
+        Color historyFg = cfg.TextColor;
+        _historyTitle.color = historyFg;
+        _historyHint.color = historyFg;
+        _autoBadge.color = cfg.SpeakerColor;
+        foreach (var entry in _historyEntries)
+        {
+            if (cfg.Font != null)
+            {
+                entry.font = cfg.Font;
+            }
+
+            entry.color = historyFg;
+        }
 
         // 换字体后旧网格可能残留（面板 inactive 时普通刷新不重建），强制重建双保险
         _body.ForceMeshUpdate(true);
@@ -264,6 +381,20 @@ public class DialogueUI
     /// </summary>
     public void ShowChoices(IReadOnlyList<DialogueChoice> choices, Action<int> onSelected)
     {
+        var allEnabled = new bool[choices.Count]; // 默认 false，需显式置 true
+        for (int i = 0; i < allEnabled.Length; i++)
+        {
+            allEnabled[i] = true;
+        }
+
+        ShowChoices(choices, onSelected, allEnabled);
+    }
+
+    /// <summary>
+    /// 带可用标记的选项展示：enabledFlags[i]=false 的项置灰（alpha×0.45）且点击不回调。
+    /// </summary>
+    public void ShowChoices(IReadOnlyList<DialogueChoice> choices, Action<int> onSelected, IReadOnlyList<bool> enabledFlags)
+    {
         ClearChildren(_choiceRoot.transform);
 
         Color bg = _activeConfig != null ? _activeConfig.ChoiceColor : new Color(0.96f, 0.91f, 0.82f, 0.95f);
@@ -271,25 +402,31 @@ public class DialogueUI
 
         for (int i = 0; i < choices.Count; i++)
         {
+            // 缺项/null 一律视为可用，避免标记列表长度不一致时误伤
+            bool enabled = enabledFlags != null && i < enabledFlags.Count ? enabledFlags[i] : true;
+
             var go = new GameObject($"Choice_{i}", typeof(Image), typeof(Button), typeof(LayoutElement));
             go.transform.SetParent(_choiceRoot.transform, false);
 
             var image = go.GetComponent<Image>();
-            image.color = bg;
+            image.color = enabled ? bg : Disabled(bg);
             image.raycastTarget = true; // 底图不参与射线检测则按钮永远点不中
 
             var element = go.GetComponent<LayoutElement>();
             element.minHeight = 40f;
             element.preferredWidth = 360f;
 
-            int index = i; // for 循环变量被所有闭包共享，必须拷贝局部副本
-            go.GetComponent<Button>().onClick.AddListener(() => onSelected?.Invoke(index));
+            if (enabled) // 置灰项干脆不挂回调：点击天然无效
+            {
+                int index = i; // for 循环变量被所有闭包共享，必须拷贝局部副本
+                go.GetComponent<Button>().onClick.AddListener(() => onSelected?.Invoke(index));
+            }
 
             var label = CreateText("Label", go.transform, _activeConfig?.Font);
             label.text = choices[i].Text;
             label.fontSize = 24;
             label.alignment = TextAlignmentOptions.Center;
-            label.color = fg;
+            label.color = enabled ? fg : Disabled(fg);
             label.raycastTarget = true; // 与底图一起保证按钮整体可点
             var labelRect = label.rectTransform;
             labelRect.anchorMin = Vector2.zero;
@@ -301,11 +438,67 @@ public class DialogueUI
         _choiceRoot.SetActive(true);
     }
 
+    /// <summary>置灰弱化：仅压透明度到 45%，保留色相以兼容纸色主题。</summary>
+    private static Color Disabled(Color color)
+    {
+        return new Color(color.r, color.g, color.b, color.a * 0.45f);
+    }
+
     /// <summary>清空并隐藏选项容器（选项被点击后由 Manager 调用）。</summary>
     public void HideChoices()
     {
         ClearChildren(_choiceRoot.transform);
         _choiceRoot.SetActive(false);
+    }
+
+    /// <summary>
+    /// 展示历史窗并逐条重建文本；speaker 空视为旁白只出正文，完成后滚到最新一条。
+    /// </summary>
+    public void ShowHistory(IReadOnlyList<(string speaker, string text)> entries)
+    {
+        // 先失活旧条目再销毁：延迟销毁期间旧条目仍参与布局，会污染归底位置
+        for (int i = _historyContent.childCount - 1; i >= 0; i--)
+        {
+            _historyContent.GetChild(i).gameObject.SetActive(false);
+        }
+
+        ClearChildren(_historyContent);
+        _historyEntries.Clear();
+
+        Color fg = _activeConfig != null ? _activeConfig.TextColor : Color.white;
+        TMP_FontAsset font = _activeConfig?.Font;
+        float width = Mathf.Max(100f, ((RectTransform)_panel.transform).rect.width - 80f);
+
+        for (int i = 0; i < entries.Count; i++)
+        {
+            string speaker = entries[i].speaker;
+            var entry = CreateText($"Entry_{i}", _historyContent, font);
+            entry.text = string.IsNullOrEmpty(speaker) ? entries[i].text : $"【{speaker}】{entries[i].text}";
+            entry.fontSize = 22;
+            entry.color = fg;
+            entry.enableWordWrapping = true;
+            var element = entry.gameObject.AddComponent<LayoutElement>();
+            element.preferredWidth = width; // 首选宽度封顶面板宽-80，超长自动折行
+            _historyEntries.Add(entry);
+        }
+
+        _historyRoot.SetActive(true);
+        // 同帧刚填充的布局尚未计算，直接归底会拿到旧高度——先强制重建再归底（最新在最下）
+        LayoutRebuilder.ForceRebuildLayoutImmediate(_historyContent);
+        _historyScroll.verticalNormalizedPosition = 0f;
+    }
+
+    public void HideHistory()
+    {
+        _historyRoot.SetActive(false);
+    }
+
+    public bool IsHistoryVisible => _historyRoot.activeSelf;
+
+    /// <summary>AUTO 播放角标显隐（角标常驻 Panel，独立于 SetContinueVisible）。</summary>
+    public void SetAutoBadgeVisible(bool visible)
+    {
+        _autoBadge.gameObject.SetActive(visible);
     }
 
     private static void ClearChildren(Transform root)

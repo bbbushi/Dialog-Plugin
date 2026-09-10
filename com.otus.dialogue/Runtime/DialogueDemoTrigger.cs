@@ -25,4 +25,22 @@ public class DialogueDemoTrigger : MonoBehaviour
 
         DialogueManager.EnsureInstance().StartDialogue(dialogue);
     }
+
+    /// <summary>演示用快捷键：F5 快照存 1 号槽（播放中才可取），F9 从 1 号槽读档回放。</summary>
+    private void Update()
+    {
+        if (Input.GetKeyDown(KeyCode.F5))
+        {
+            var snap = DialogueManager.Instance != null ? DialogueManager.Instance.CaptureSnapshot() : null;
+            if (snap != null)
+            {
+                DialogueSaveSystem.Save(1, snap);
+            }
+        }
+
+        if (Input.GetKeyDown(KeyCode.F9) && dialogue != null && DialogueSaveSystem.TryLoad(1, out var loaded))
+        {
+            DialogueManager.EnsureInstance().RestoreSnapshot(loaded, dialogue);
+        }
+    }
 }

@@ -26,6 +26,10 @@ public class DialogueUIConfig : ScriptableObject
 
     [SerializeField, Min(1f)] private float charactersPerSecond = 30f;
 
+    [SerializeField, Min(0.1f)] private float autoAdvanceDelay = 1.5f; // 自动播放：显示完到自动推进的间隔（秒）
+
+    [SerializeField, Min(1f)] private float readSpeedMultiplier = 3f; // 已读节点打字加速倍率
+
     public TMP_FontAsset Font => font;
 
     public Sprite PanelSprite => panelSprite;
@@ -43,4 +47,8 @@ public class DialogueUIConfig : ScriptableObject
     public Color ChoiceTextColor => choiceTextColor;
 
     public float CharactersPerSecond => charactersPerSecond;
+
+    public float AutoAdvanceDelay => autoAdvanceDelay;
+
+    public float ReadSpeedMultiplier => readSpeedMultiplier;
 }

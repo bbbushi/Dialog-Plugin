@@ -20,6 +20,7 @@ public class DialogueAssetEditor : Editor
     private int _pendingScrollToIndex = -1;
     private string _lastSyncMessage;
     private string _lastSyncForId;
+    private List<DialogueIssue> _cachedIssues;
 
     private static readonly GUIContent IdLabel = new GUIContent("节点 ID");
     private static readonly GUIContent NextLabel = new GUIContent("下一句");
@@ -40,7 +41,15 @@ public class DialogueAssetEditor : Editor
         }
 
         var asset = (DialogueAsset)target;
-        var issues = DialogueValidator.Validate(asset);
+
+        // 文本编辑中沿用上次校验结果：若逐字符重算，首个字符会让 EmptyText 等问题消失，
+        // 校验区/卡片图标的控件数随之变化 → IMGUI control ID 漂移 → 焦点与输入法组合串丢失（打字丢字根因）
+        if (_cachedIssues == null || !EditorGUIUtility.editingTextField)
+        {
+            _cachedIssues = DialogueValidator.Validate(asset);
+        }
+
+        var issues = _cachedIssues;
 
         EditorGUILayout.Space(2);
         DrawToolbar(asset);
@@ -486,6 +495,16 @@ public class DialogueAssetEditor : Editor
                     choicesProp.DeleteArrayElementAtIndex(c);
                 }
             }
+
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                var conditionProp = choice.FindPropertyRelative("condition");
+                var setProp = choice.FindPropertyRelative("setExpressions");
+                EditorGUILayout.PropertyField(conditionProp,
+                    new GUIContent("条件", "显示条件，如 courage>=3；不满足则置灰。语法错由校验器抓"), GUILayout.MinWidth(120));
+                EditorGUILayout.PropertyField(setProp,
+                    new GUIContent("赋值", "选中瞬间执行，分号分隔，如 courage+1; met_scholar=true"), GUILayout.MinWidth(120));
+            }
         }
 
         if (choicesProp.arraySize == 0)
@@ -499,6 +518,8 @@ public class DialogueAssetEditor : Editor
             var added = choicesProp.GetArrayElementAtIndex(choicesProp.arraySize - 1);
             added.FindPropertyRelative("text").stringValue = string.Empty;
             added.FindPropertyRelative("nextId").stringValue = string.Empty;
+            added.FindPropertyRelative("condition").stringValue = string.Empty;
+            added.FindPropertyRelative("setExpressions").stringValue = string.Empty;
         }
 
         EditorGUI.indentLevel--;

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using UnityEditor;
@@ -17,6 +18,7 @@ public class DialoguePreviewWindow : EditorWindow
     private DialogueAsset _asset;
     private DialogueNode _current;
     private PreviewState _state = PreviewState.Idle;
+    private readonly DialogueVariables _vars = new DialogueVariables(); // 条件/赋值与运行时同语义（跨对话记忆，不随 StartPlayback 重置）
     private float _visibleChars;
     private int _totalChars;
     private readonly List<DialogueNode> _visitedChain = new List<DialogueNode>();
@@ -128,6 +130,15 @@ public class DialoguePreviewWindow : EditorWindow
         }
 
         var choice = _current.Choices[index];
+        try
+        {
+            DialogueExpression.Apply(_vars, choice.SetExpressions); // 选中先结算副作用（与运行时同语义，防双端漂移）
+        }
+        catch (FormatException e)
+        {
+            Debug.LogError($"[Dialogue] 预览：选项赋值执行失败（节点 {_current.Id}）：{e.Message}——跳过赋值继续。");
+        }
+
         var next = string.IsNullOrEmpty(choice.NextId) ? null : _asset.FindNode(choice.NextId);
         if (next == null)
         {
@@ -314,7 +325,7 @@ public class DialoguePreviewWindow : EditorWindow
         }
     }
 
-    /// <summary>玩家选项按钮（画在面板下方，不遮正文）；点选面板/按空格在此状态下无效（Advance 已守卫）。</summary>
+    /// <summary>玩家选项按钮（画在面板下方，不遮正文）；条件不满足置灰（与运行时同判定）。</summary>
     private void DrawChoices()
     {
         if (_state != PreviewState.WaitingAdvance || _current == null || !_current.HasChoices)
@@ -325,11 +336,25 @@ public class DialoguePreviewWindow : EditorWindow
         var choices = _current.Choices;
         for (int i = 0; i < choices.Count; i++)
         {
+            bool enabled;
+            try
+            {
+                enabled = DialogueExpression.Evaluate(_vars, choices[i].Condition);
+            }
+            catch (FormatException e)
+            {
+                Debug.LogError($"[Dialogue] 预览：选项条件解析失败（节点 {_current.Id}）：{e.Message}——按无条件显示。");
+                enabled = true;
+            }
+
             EditorGUILayout.Space(6);
             Rect rect = GUILayoutUtility.GetRect(220, 30, GUILayout.Width(220), GUILayout.Height(30));
-            if (GUI.Button(rect, $"{i + 1}. {choices[i].Text}"))
+            using (new EditorGUI.DisabledScope(!enabled))
             {
-                SelectChoice(i);
+                if (GUI.Button(rect, $"{i + 1}. {choices[i].Text}") && enabled)
+                {
+                    SelectChoice(i);
+                }
             }
         }
     }

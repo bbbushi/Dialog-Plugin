@@ -263,11 +263,12 @@ public static class DialogueSetupTool
             node.FindPropertyRelative("choices").ClearArray(); // 清残留选项：历史数据按 index 复位时旧的 choices 会串节点
         }
 
-        // n2 挂两条选项分支（ClearArray 幂等，重跑不叠加）
+        // n2 挂三条选项分支（ClearArray 幂等，重跑不叠加）；第三条演示"条件置灰"（永不满足）
         var n2Choices = nodes.GetArrayElementAtIndex(1).FindPropertyRelative("choices");
         n2Choices.ClearArray();
         AddChoice(n2Choices, "追问学者", "n3");
-        AddChoice(n2Choices, "转身离开", "n4");
+        AddChoice(n2Choices, "转身离开", "n4", setExpressions: "courage+1");
+        AddChoice(n2Choices, "凝视深渊（演示置灰）", "n5", condition: "courage>=99");
 
         so.ApplyModifiedPropertiesWithoutUndo();
         EditorUtility.SetDirty(demo);
@@ -294,11 +295,14 @@ public static class DialogueSetupTool
         Debug.Log($"[Dialogue Setup] Demo 对话已生成：{DemoAssetPath}；Cube 已挂 DialogueDemoTrigger（记得保存场景 Ctrl+S）。");
     }
 
-    private static void AddChoice(SerializedProperty choicesProp, string text, string nextId)
+    private static void AddChoice(SerializedProperty choicesProp, string text, string nextId,
+        string condition = null, string setExpressions = null)
     {
         choicesProp.arraySize++;
         var choice = choicesProp.GetArrayElementAtIndex(choicesProp.arraySize - 1);
         choice.FindPropertyRelative("text").stringValue = text;
         choice.FindPropertyRelative("nextId").stringValue = nextId;
+        choice.FindPropertyRelative("condition").stringValue = condition ?? string.Empty;
+        choice.FindPropertyRelative("setExpressions").stringValue = setExpressions ?? string.Empty;
     }
 }

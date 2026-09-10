@@ -100,6 +100,8 @@ public class DialogueUIConfigEditor : Editor
         {
             EditorGUI.indentLevel++;
             EditorGUILayout.Slider(serializedObject.FindProperty("charactersPerSecond"), 5f, 120f, "打字速度（字/秒）");
+            EditorGUILayout.Slider(serializedObject.FindProperty("autoAdvanceDelay"), 0.1f, 10f, "自动播放间隔（秒）");
+            EditorGUILayout.Slider(serializedObject.FindProperty("readSpeedMultiplier"), 1f, 10f, "已读加速倍率");
             EditorGUI.indentLevel--;
         }
 

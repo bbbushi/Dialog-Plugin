@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -46,6 +47,9 @@ public enum DialogueIssueType
 
     /// <summary>choices 非空时节点 nextId 被忽略（提示级：去向由玩家选择决定）。</summary>
     NextIdIgnoredByChoices,
+
+    /// <summary>选项条件/赋值表达式语法错误（错误级：运行时按无条件/跳过赋值兜底并报错）。</summary>
+    BadChoiceCondition,
 }
 
 /// <summary>一条校验结果。NodeIndex = -1 表示资产级问题。</summary>
@@ -170,6 +174,34 @@ public static class DialogueValidator
                 {
                     issues.Add(Issue(DialogueIssueType.BrokenChoiceLink, DialogueIssueSeverity.Error, i, node,
                         $"选项 #{c + 1} 跳转目标 \"{choiceNextId}\" 不存在（断链）。"));
+                }
+
+                // 条件/赋值语法：临时变量实例试执行（未定义变量按 0，动态语义不校验存在性）
+                var probe = new DialogueVariables();
+                if (!string.IsNullOrWhiteSpace(choice.Condition))
+                {
+                    try
+                    {
+                        DialogueExpression.Evaluate(probe, choice.Condition);
+                    }
+                    catch (FormatException e)
+                    {
+                        issues.Add(Issue(DialogueIssueType.BadChoiceCondition, DialogueIssueSeverity.Error, i, node,
+                            $"选项 #{c + 1} 条件语法错误：{e.Message}"));
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(choice.SetExpressions))
+                {
+                    try
+                    {
+                        DialogueExpression.Apply(probe, choice.SetExpressions);
+                    }
+                    catch (FormatException e)
+                    {
+                        issues.Add(Issue(DialogueIssueType.BadChoiceCondition, DialogueIssueSeverity.Error, i, node,
+                            $"选项 #{c + 1} 赋值语法错误：{e.Message}"));
+                    }
                 }
             }
         }
