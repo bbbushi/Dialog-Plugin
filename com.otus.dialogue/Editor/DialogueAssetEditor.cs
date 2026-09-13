@@ -18,6 +18,12 @@ public class DialogueAssetEditor : Editor
     private Vector2 _scroll;
     private bool _showIssues;
     private int _pendingScrollToIndex = -1;
+    // 选项删改走「帧内登记、帧末执行」：绘制中途动 SerializedProperty / 提前 return 都会
+    // 让事件帧与 Layout 帧的控件树不一致（Mismatched LayoutGroup 报错），且异常会吞掉
+    // 尾部统一 Apply——表现为选项删不掉、控制台报错
+    private int _pendingDeleteChoiceNode = -1;
+    private int _pendingDeleteChoiceIndex = -1;
+    private int _pendingClearChoicesNode = -1;
     private string _lastSyncMessage;
     private string _lastSyncForId;
     private List<DialogueIssue> _cachedIssues;
@@ -79,6 +85,42 @@ public class DialogueAssetEditor : Editor
             _pendingScrollToIndex = -1;
             Repaint();
         }
+
+        // 帧末统一执行选项删改（本帧绘制已全部完成，属性树可安全变更）
+        if (_pendingDeleteChoiceNode >= 0 || _pendingClearChoicesNode >= 0)
+        {
+            ApplyPendingChoiceEdits();
+        }
+    }
+
+    /// <summary>执行帧内登记的选项删除/清空：重新 Update 后按索引定位，一次 Apply 落盘。</summary>
+    private void ApplyPendingChoiceEdits()
+    {
+        int deleteNode = _pendingDeleteChoiceNode;
+        int deleteChoice = _pendingDeleteChoiceIndex;
+        int clearNode = _pendingClearChoicesNode;
+        _pendingDeleteChoiceNode = _pendingDeleteChoiceIndex = _pendingClearChoicesNode = -1;
+
+        serializedObject.Update();
+        var nodes = serializedObject.FindProperty("nodes");
+
+        if (deleteNode >= 0 && deleteNode < nodes.arraySize)
+        {
+            var choices = nodes.GetArrayElementAtIndex(deleteNode).FindPropertyRelative("choices");
+            if (deleteChoice >= 0 && deleteChoice < choices.arraySize)
+            {
+                choices.DeleteArrayElementAtIndex(deleteChoice);
+            }
+        }
+
+        if (clearNode >= 0 && clearNode < nodes.arraySize)
+        {
+            nodes.GetArrayElementAtIndex(clearNode).FindPropertyRelative("choices").ClearArray();
+        }
+
+        serializedObject.ApplyModifiedProperties();
+        _cachedIssues = null; // 结构已变，下帧重算校验
+        Repaint();
     }
 
     // ---------- 工具栏 ----------
@@ -279,7 +321,7 @@ public class DialogueAssetEditor : Editor
                     EditorGUILayout.LabelField("已由选项接管", EditorStyles.miniLabel);
                 }
 
-                DrawChoicesSection(choicesProp, total);
+                DrawChoicesSection(choicesProp, i, total);
 
                 // id 重命名同步提示
                 if (_lastSyncForId == idProp.stringValue && !string.IsNullOrEmpty(_lastSyncMessage))
@@ -471,7 +513,7 @@ public class DialogueAssetEditor : Editor
 
     // ---------- 玩家选项（choices 列表）----------
 
-    private void DrawChoicesSection(SerializedProperty choicesProp, int total)
+    private void DrawChoicesSection(SerializedProperty choicesProp, int nodeIndex, int total)
     {
         EditorGUILayout.Space(2);
         EditorGUILayout.LabelField("玩家选项", EditorStyles.boldLabel);
@@ -492,7 +534,9 @@ public class DialogueAssetEditor : Editor
 
                 if (GUILayout.Button("−", EditorStyles.miniButton, GUILayout.Width(22)))
                 {
-                    choicesProp.DeleteArrayElementAtIndex(c);
+                    _pendingDeleteChoiceNode = nodeIndex;
+                    _pendingDeleteChoiceIndex = c;
+                    // 不在此处删：等本帧绘制全部走完，帧末统一执行
                 }
             }
 
@@ -512,17 +556,35 @@ public class DialogueAssetEditor : Editor
             EditorGUILayout.LabelField("无选项（走『下一句』流转）", EditorStyles.miniLabel);
         }
 
-        if (GUILayout.Button("＋ 添加选项", EditorStyles.miniButton, GUILayout.Width(90)))
+        using (new EditorGUILayout.HorizontalScope())
         {
-            choicesProp.arraySize++;
-            var added = choicesProp.GetArrayElementAtIndex(choicesProp.arraySize - 1);
-            added.FindPropertyRelative("text").stringValue = string.Empty;
-            added.FindPropertyRelative("nextId").stringValue = string.Empty;
-            added.FindPropertyRelative("condition").stringValue = string.Empty;
-            added.FindPropertyRelative("setExpressions").stringValue = string.Empty;
+            if (GUILayout.Button("＋ 添加选项", EditorStyles.miniButton, GUILayout.Width(90)))
+            {
+                AddChoice(choicesProp); // 追加不动其他元素，帧内安全；新行下一帧出现
+            }
+
+            // 一键退出「选项接管」：删空即回线性/跳转（nextId 下拉同时解禁）
+            using (new EditorGUI.DisabledScope(choicesProp.arraySize == 0))
+            {
+                if (GUILayout.Button("清空选项", EditorStyles.miniButton, GUILayout.Width(90)))
+                {
+                    _pendingClearChoicesNode = nodeIndex; // 帧末统一执行
+                }
+            }
         }
 
         EditorGUI.indentLevel--;
+    }
+
+    /// <summary>追加一个空选项（字段显式清空防脏数据）。</summary>
+    private static void AddChoice(SerializedProperty choicesProp)
+    {
+        choicesProp.arraySize++;
+        var added = choicesProp.GetArrayElementAtIndex(choicesProp.arraySize - 1);
+        added.FindPropertyRelative("text").stringValue = string.Empty;
+        added.FindPropertyRelative("nextId").stringValue = string.Empty;
+        added.FindPropertyRelative("condition").stringValue = string.Empty;
+        added.FindPropertyRelative("setExpressions").stringValue = string.Empty;
     }
 
     /// <summary>选项跳转目标下拉：列全部节点 id，空首项「（未设置）」，写值走 SerializedProperty。</summary>

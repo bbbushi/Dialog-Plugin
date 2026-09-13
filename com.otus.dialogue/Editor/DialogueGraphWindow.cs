@@ -134,6 +134,38 @@ public class DialogueGraphWindow : EditorWindow
         }
     }
 
+    /// <summary>删除一个玩家选项本体（区别于删边只清 nextId）——按节点 id 定位后删 choices[i]，带 Undo。</summary>
+    private void DeleteChoice(PortRef source)
+    {
+        if (_asset == null || source.ChoiceIndex < 0)
+        {
+            return;
+        }
+
+        var so = new SerializedObject(_asset);
+        var nodes = so.FindProperty("nodes");
+        for (int i = 0; i < nodes.arraySize; i++)
+        {
+            var candidate = nodes.GetArrayElementAtIndex(i);
+            if (candidate.FindPropertyRelative("id").stringValue != source.NodeId)
+            {
+                continue;
+            }
+
+            var choices = candidate.FindPropertyRelative("choices");
+            if (source.ChoiceIndex < choices.arraySize)
+            {
+                Undo.RecordObject(_asset, "删选项");
+                choices.DeleteArrayElementAtIndex(source.ChoiceIndex);
+                so.ApplyModifiedProperties();
+            }
+
+            break;
+        }
+
+        _graph.schedule.Execute(() => _graph.Rebuild(_asset)); // 延一帧重建（删空后节点回主出口流转）
+    }
+
     /// <summary>出口端口的数据定位：按节点 id（而非下标——节点列表在 Inspector 增删后下标会漂移）+ 选项索引（-1 = 主出口）。</summary>
     private readonly struct PortRef
     {
@@ -381,6 +413,12 @@ public class DialogueGraphWindow : EditorWindow
                 var choicePort = Port.Create<Edge>(Orientation.Horizontal, Direction.Output, Port.Capacity.Single, typeof(bool));
                 choicePort.portName = string.IsNullOrEmpty(choices[c].Text) ? "(空文案)" : choices[c].Text;
                 choicePort.userData = new PortRef(node.Id ?? "", c);
+                // 图上删选项本体：删边只清 nextId，选项还在——节点会一直停在「选项接管」，
+                // 右键端口是图内退出接管的唯一入口（卡片编辑器里有「清空选项」）
+                choicePort.AddManipulator(new ContextualMenuManipulator(evt =>
+                {
+                    evt.menu.AppendAction("删除该选项（退出接管）", _ => _window.DeleteChoice(new PortRef(node.Id ?? "", c)));
+                }));
                 view.outputContainer.Add(choicePort);
                 view.ChoicePorts.Add(choicePort);
             }
