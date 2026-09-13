@@ -30,6 +30,9 @@ public class DialogueUIConfig : ScriptableObject
 
     [SerializeField, Min(1f)] private float readSpeedMultiplier = 3f; // 已读节点打字加速倍率
 
+    [Tooltip("布局预制体覆盖（空 = 代码默认布局）。用菜单 Dialogue > UI > 导出当前 UI 为预制体 生成起点后随意改布局/装饰；缺必需节点会自动回退默认并报错")]
+    [SerializeField] private GameObject layoutPrefab;
+
     public TMP_FontAsset Font => font;
 
     public Sprite PanelSprite => panelSprite;
@@ -51,4 +54,6 @@ public class DialogueUIConfig : ScriptableObject
     public float AutoAdvanceDelay => autoAdvanceDelay;
 
     public float ReadSpeedMultiplier => readSpeedMultiplier;
+
+    public GameObject LayoutPrefab => layoutPrefab;
 }

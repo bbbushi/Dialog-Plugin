@@ -11,6 +11,8 @@ using UnityEngine.UI;
 ///                                    > NamePlate(姓名牌) > NameText / BodyText / ContinueArrow
 ///                  > ChoiceRoot(玩家选项容器，按需激活) + DialogueEventSystem(Button 点击依赖)。
 /// Build 只建结构，样式赋值统一走 ApplyStyle（单点，杜绝两处漂移）。
+/// 配置了 layoutPrefab 时改为实例化预制体并按 DialogueUILayoutContract 的节点名解析引用，
+/// 代码层级退居默认/回退实现（详见 TryBuildFromPrefab）。
 /// </summary>
 public class DialogueUI
 {
@@ -58,7 +60,14 @@ public class DialogueUI
     {
         if (_panel != null)
         {
-            return; // 已构建（为将来迁预制体留路）
+            return; // 已构建
+        }
+
+        // 布局预制体优先：策划在编辑器里自由布置的层级按契约节点名解析引用；
+        // 缺必需节点 → 报错指路并回退下面的代码默认布局，游戏永不因改 UI 而崩
+        if (cfg != null && cfg.LayoutPrefab != null && TryBuildFromPrefab(parent, cfg))
+        {
+            return;
         }
 
         // ---- Canvas ----
@@ -283,12 +292,198 @@ public class DialogueUI
         _interactPromptRoot.SetActive(false);
 
         // ---- EventSystem：项目场景零摆放且无处保证有 EventSystem，Button 点击依赖它，这里自举 ----
-        var eventSystemGo = new GameObject("DialogueEventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
-        eventSystemGo.transform.SetParent(canvasGo.transform, false);
+        EnsureEventSystem(canvasGo.transform);
 
         _panel.SetActive(false); // 默认隐藏（只隐藏 Panel；Manager 常驻，规避自激活陷阱）
 
         ApplyStyle(cfg); // 样式赋值单点（含 cfg 为 null 的兜底）
+    }
+
+    // ---------- 布局预制体路径（cfg.LayoutPrefab 非空时取代代码层级）----------
+
+    /// <summary>
+    /// 实例化布局预制体并接管：契约校验 → 按名解析引用 → 功能组件自愈 → 动态态归零。
+    /// 校验不过返回 false（实例已清理、问题清单已报错），Build 回退代码默认布局。
+    /// </summary>
+    private bool TryBuildFromPrefab(Transform parent, DialogueUIConfig cfg)
+    {
+        GameObject instance = UnityEngine.Object.Instantiate(cfg.LayoutPrefab, parent, false);
+        instance.name = "DialogueCanvas";
+
+        var optionalNotes = new List<string>();
+        var problems = DialogueUILayoutContract.Validate(instance, optionalNotes);
+        if (problems.Count > 0)
+        {
+            Debug.LogError("[Dialogue] 布局预制体缺必需节点，已回退代码默认布局：\n" + string.Join("\n", problems)
+                + "\n排查：DialogueUIConfig 的「布局预制体」字段旁点「检查布局预制体」，或清空字段恢复默认。");
+            if (Application.isPlaying)
+            {
+                UnityEngine.Object.Destroy(instance);
+            }
+            else
+            {
+                UnityEngine.Object.DestroyImmediate(instance); // 编辑模式（预览窗）不允许 Destroy
+            }
+
+            return false;
+        }
+
+        if (optionalNotes.Count > 0)
+        {
+            Debug.Log("[Dialogue] 布局预制体按降级模式运行：" + string.Join("；", optionalNotes));
+        }
+
+        ResolveLayoutReferences(instance.transform);
+        HealFunctionalComponents(instance);
+
+        // 动态态归零（与代码路径一致：Manager 常驻，默认全隐藏）
+        _panel.SetActive(false);
+        _choiceRoot.SetActive(false);
+        _historyRoot.SetActive(false);
+        _interactPromptRoot.SetActive(false);
+        if (_autoBadge != null)
+        {
+            _autoBadge.gameObject.SetActive(false);
+        }
+
+        EnsureEventSystem(instance.transform);
+        ApplyStyle(cfg); // 样式仍归配置管（字体/颜色/九宫格贴图），预制体只管布局与装饰
+        return true;
+    }
+
+    /// <summary>按契约节点名把实例解析进字段。可选节点缺失（或组件被删）一律解析为 null，后续判空降级。</summary>
+    private void ResolveLayoutReferences(Transform root)
+    {
+        _panel = DialogueUILayoutContract.Find(root, "Panel").gameObject;
+        _panelImage = _panel.GetComponent<Image>(); // 面板底图可由子节点承担，缺 Image 只是不吃贴图
+
+        var frame = ResolveNodeWithComponent(root, "PortraitFrame", typeof(Image));
+        _portraitRoot = frame != null ? frame.gameObject : null;
+        _portraitFrameImage = frame != null ? frame.GetComponent<Image>() : null;
+        _portraitImage = ResolveComponent<Image>(root, "PortraitImage");
+        _portraitInitial = ResolveComponent<TextMeshProUGUI>(root, "PortraitInitial");
+
+        var plate = ResolveNodeWithComponent(root, "NamePlate", typeof(Image));
+        _namePlate = plate != null ? plate.gameObject : null;
+        _plateImage = plate != null ? plate.GetComponent<Image>() : null;
+        _name = ResolveComponent<TextMeshProUGUI>(root, "NameText");
+        _body = ResolveComponent<TextMeshProUGUI>(root, "BodyText");
+        _arrow = ResolveComponent<TextMeshProUGUI>(root, "ContinueArrow");
+        _autoBadge = ResolveComponent<TextMeshProUGUI>(root, "AutoBadge");
+
+        _choiceRoot = DialogueUILayoutContract.Find(root, "ChoiceRoot").gameObject;
+
+        _historyRoot = DialogueUILayoutContract.Find(root, "HistoryRoot").gameObject;
+        _historyTitle = ResolveComponent<TextMeshProUGUI>(root, "Title");
+        _historyHint = ResolveComponent<TextMeshProUGUI>(root, "Hint");
+        _historyContent = (RectTransform)DialogueUILayoutContract.Find(root, "Content");
+        _historyScroll = DialogueUILayoutContract.Find(root, "HistoryScroll").GetComponent<ScrollRect>();
+
+        _interactPromptRoot = DialogueUILayoutContract.Find(root, "InteractPrompt").gameObject;
+        _interactPromptImage = _interactPromptRoot.GetComponent<Image>();
+        _interactPrompt = ResolveComponent<TextMeshProUGUI>(root, "PromptText");
+    }
+
+    /// <summary>找节点且必须挂指定组件，缺一按「节点不存在」处理（与契约的可选降级语义一致）。</summary>
+    private static Transform ResolveNodeWithComponent(Transform root, string name, Type component)
+    {
+        var node = DialogueUILayoutContract.Find(root, name);
+        return node != null && node.GetComponent(component) != null ? node : null;
+    }
+
+    private static T ResolveComponent<T>(Transform root, string name) where T : Component
+    {
+        var node = DialogueUILayoutContract.Find(root, name);
+        return node != null ? node.GetComponent<T>() : null;
+    }
+
+    /// <summary>
+    /// 实例上的功能组件自愈（只补缺/接线，不覆盖已有参数）：Canvas 三件套、滚动裁剪、
+    /// 布局组与高度自适应、ScrollRect 引用。策划改布局不该有机会改坏功能。
+    /// </summary>
+    private static void HealFunctionalComponents(GameObject canvasGo)
+    {
+        if (canvasGo.GetComponent<Canvas>() == null)
+        {
+            var canvas = canvasGo.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = 100;
+        }
+
+        if (canvasGo.GetComponent<CanvasScaler>() == null)
+        {
+            var scaler = canvasGo.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1280, 720);
+            scaler.matchWidthOrHeight = 0.5f;
+        }
+
+        if (canvasGo.GetComponent<GraphicRaycaster>() == null)
+        {
+            canvasGo.AddComponent<GraphicRaycaster>();
+        }
+
+        HealVerticalContainer(DialogueUILayoutContract.Find(canvasGo.transform, "ChoiceRoot"));
+        var content = DialogueUILayoutContract.Find(canvasGo.transform, "Content");
+        HealVerticalContainer(content);
+
+        var viewport = DialogueUILayoutContract.Find(canvasGo.transform, "Viewport");
+        if (viewport != null && viewport.GetComponent<RectMask2D>() == null && viewport.GetComponent<Mask>() == null)
+        {
+            viewport.gameObject.AddComponent<RectMask2D>(); // 已有 Mask（带图模板）则尊重
+        }
+
+        var scrollNode = DialogueUILayoutContract.Find(canvasGo.transform, "HistoryScroll");
+        var scroll = scrollNode != null ? scrollNode.GetComponent<ScrollRect>() : null;
+        if (scroll != null)
+        {
+            // 引用接线是功能不是美观：无条件接好，策划无需在 Inspector 里手连
+            scroll.viewport = (RectTransform)viewport;
+            scroll.content = (RectTransform)content;
+            scroll.horizontal = false;
+            if (scrollNode.GetComponent<Image>() == null)
+            {
+                var raycastCatcher = scrollNode.gameObject.AddComponent<Image>(); // 滚轮事件的射线落点
+                raycastCatcher.color = Color.clear;
+            }
+        }
+    }
+
+    /// <summary>垂直容器自愈：布局组/高度自适应缺失才补（已有则尊重策划的间距等参数）。</summary>
+    private static void HealVerticalContainer(Transform container)
+    {
+        if (container == null)
+        {
+            return;
+        }
+
+        if (container.GetComponent<VerticalLayoutGroup>() == null)
+        {
+            var layout = container.gameObject.AddComponent<VerticalLayoutGroup>();
+            layout.spacing = 8f;
+            layout.childForceExpandWidth = false;
+            layout.childForceExpandHeight = false;
+            layout.childControlWidth = true;
+            layout.childControlHeight = true;
+        }
+
+        if (container.GetComponent<ContentSizeFitter>() == null)
+        {
+            var fitter = container.gameObject.AddComponent<ContentSizeFitter>();
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        }
+    }
+
+    /// <summary>场景无 EventSystem 时自举一个（Button 点击依赖）；有则复用，避免多实例告警。</summary>
+    private static void EnsureEventSystem(Transform canvasParent)
+    {
+        if (UnityEngine.Object.FindFirstObjectByType<EventSystem>() != null)
+        {
+            return;
+        }
+
+        var eventSystemGo = new GameObject("DialogueEventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
+        eventSystemGo.transform.SetParent(canvasParent, false);
     }
 
     public void Show()
@@ -308,36 +503,53 @@ public class DialogueUI
     {
         string display = speaker != null ? speaker.GetDisplayName() : legacyName;
         bool has = !string.IsNullOrEmpty(display);
-        _namePlate.SetActive(has);
-        if (has)
+
+        // 姓名牌整体可选：节点被删/缺 NameText 时整块跳过（默认布局引用恒全）
+        if (_namePlate != null)
         {
-            _name.text = display;
+            bool show = has && _name != null;
+            _namePlate.SetActive(show);
+            if (show)
+            {
+                _name.text = display;
+            }
         }
 
-        // 头像区：无 speaker（旁白/旧文本）时整体隐藏
-        _portraitRoot.SetActive(speaker != null);
-        if (speaker != null)
+        // 头像区：无 speaker（旁白/旧文本）时整体隐藏；内部件缺失则对应功能静默降级
+        bool portraitVisible = speaker != null && _portraitRoot != null;
+        if (_portraitRoot != null)
         {
-            bool hasPortrait = speaker.Portrait != null;
-            _portraitImage.gameObject.SetActive(hasPortrait);
-            _portraitInitial.gameObject.SetActive(!hasPortrait);
-            if (hasPortrait)
+            _portraitRoot.SetActive(portraitVisible);
+            if (portraitVisible)
             {
-                _portraitImage.sprite = speaker.Portrait;
-            }
-            else if (display.Length > 0)
-            {
-                // 取首字；emoji 代理对会截半个字符——中英文名均为单 char，接受
-                _portraitInitial.text = display.Substring(0, 1);
+                bool hasPortrait = speaker.Portrait != null;
+                if (_portraitImage != null)
+                {
+                    _portraitImage.gameObject.SetActive(hasPortrait);
+                    if (hasPortrait)
+                    {
+                        _portraitImage.sprite = speaker.Portrait;
+                    }
+                }
+
+                if (_portraitInitial != null)
+                {
+                    _portraitInitial.gameObject.SetActive(!hasPortrait);
+                    if (!hasPortrait && display.Length > 0)
+                    {
+                        // 取首字；emoji 代理对会截半个字符——中英文名均为单 char，接受
+                        _portraitInitial.text = display.Substring(0, 1);
+                    }
+                }
             }
         }
 
         // 名字颜色：speaker 覆盖 > 样式默认
         Color fallback = _activeConfig != null ? _activeConfig.SpeakerColor : Color.white;
-        _name.color = speaker != null ? speaker.ResolveNameColor(fallback) : fallback;
+        SetColor(_name, speaker != null ? speaker.ResolveNameColor(fallback) : fallback);
 
-        // 正文让位：有头像时右移
-        _body.rectTransform.offsetMin = new Vector2(speaker != null ? BodyIndentX : BodyDefaultX, 14f);
+        // 正文让位：头像区可用且有头像时右移，否则贴默认左边距
+        _body.rectTransform.offsetMin = new Vector2(portraitVisible ? BodyIndentX : BodyDefaultX, 14f);
     }
 
     /// <summary>设正文全文并立即重建网格；可见字数清零，由 Manager 逐字递增。</summary>
@@ -358,47 +570,37 @@ public class DialogueUI
         _activeConfig = cfg;
         cfg ??= NullConfig; // null → 用中性兜底配置统一赋值路径
 
+        // 预制体布局下可选节点可能不存在（或缺组件），赋值统一判空降级；默认布局引用恒全
         ApplySprite(_panelImage, cfg.PanelSprite, new Color(0, 0, 0, 0.75f));
         ApplySprite(_plateImage, cfg.NameSprite, new Color(0.15f, 0.1f, 0.06f, 0.9f));
         ApplySprite(_portraitFrameImage, cfg.PortraitFrameSprite, new Color(0.2f, 0.16f, 0.1f, 0.9f));
 
-        if (cfg.Font != null)
-        {
-            _name.font = cfg.Font;
-            _body.font = cfg.Font;
-            _arrow.font = cfg.Font;
-            _portraitInitial.font = cfg.Font;
-            _historyTitle.font = cfg.Font;
-            _historyHint.font = cfg.Font;
-            _autoBadge.font = cfg.Font;
-        }
+        SetFont(_name, cfg.Font);
+        SetFont(_body, cfg.Font);
+        SetFont(_arrow, cfg.Font);
+        SetFont(_portraitInitial, cfg.Font);
+        SetFont(_historyTitle, cfg.Font);
+        SetFont(_historyHint, cfg.Font);
+        SetFont(_autoBadge, cfg.Font);
 
-        _name.color = cfg.SpeakerColor;
-        _body.color = cfg.TextColor;
-        _arrow.color = cfg.TextColor;
-        _portraitInitial.color = cfg.TextColor;
+        SetColor(_name, cfg.SpeakerColor);
+        SetColor(_body, cfg.TextColor);
+        SetColor(_arrow, cfg.TextColor);
+        SetColor(_portraitInitial, cfg.TextColor);
 
         // 历史窗与角标跟随换肤（黑底上若 cfg.TextColor 偏暗则由配置方自行调亮，此处不做二次加工）
         Color historyFg = cfg.TextColor;
-        _historyTitle.color = historyFg;
-        _historyHint.color = historyFg;
-        _autoBadge.color = cfg.SpeakerColor;
+        SetColor(_historyTitle, historyFg);
+        SetColor(_historyHint, historyFg);
+        SetColor(_autoBadge, cfg.SpeakerColor);
 
         // 交互提示跟随换肤（与面板同款纸面/字体/文字色）
         ApplySprite(_interactPromptImage, cfg.PanelSprite, new Color(0, 0, 0, 0.75f));
-        if (cfg.Font != null)
-        {
-            _interactPrompt.font = cfg.Font;
-        }
-
-        _interactPrompt.color = cfg.TextColor;
+        SetFont(_interactPrompt, cfg.Font);
+        SetColor(_interactPrompt, cfg.TextColor);
         foreach (var entry in _historyEntries)
         {
-            if (cfg.Font != null)
-            {
-                entry.font = cfg.Font;
-            }
-
+            SetFont(entry, cfg.Font);
             entry.color = historyFg;
         }
 
@@ -408,7 +610,10 @@ public class DialogueUI
 
     public void SetContinueVisible(bool visible)
     {
-        _arrow.gameObject.SetActive(visible);
+        if (_arrow != null)
+        {
+            _arrow.gameObject.SetActive(visible);
+        }
     }
 
     /// <summary>
@@ -533,7 +738,10 @@ public class DialogueUI
     /// <summary>AUTO 播放角标显隐（角标常驻 Panel，独立于 SetContinueVisible）。</summary>
     public void SetAutoBadgeVisible(bool visible)
     {
-        _autoBadge.gameObject.SetActive(visible);
+        if (_autoBadge != null)
+        {
+            _autoBadge.gameObject.SetActive(visible);
+        }
     }
 
     /// <summary>显示交互提示（触发器靠近范围内、未播放时），如「按 E 交谈」。</summary>
@@ -570,6 +778,11 @@ public class DialogueUI
 
     private static void ApplySprite(Image image, Sprite sprite, Color fallbackColor)
     {
+        if (image == null)
+        {
+            return; // 预制体布局里该节点可选拄件，缺 Image 只是不吃贴图
+        }
+
         if (sprite != null)
         {
             image.sprite = sprite;
@@ -605,6 +818,23 @@ public class DialogueUI
 
         tmp.raycastTarget = false;
         return tmp;
+    }
+
+    /// <summary>判空赋字体/颜色：预制体布局的可选节点可能解析为 null（默认布局恒非空）。</summary>
+    private static void SetFont(TextMeshProUGUI tmp, TMP_FontAsset font)
+    {
+        if (tmp != null && font != null)
+        {
+            tmp.font = font;
+        }
+    }
+
+    private static void SetColor(TextMeshProUGUI tmp, Color color)
+    {
+        if (tmp != null)
+        {
+            tmp.color = color;
+        }
     }
 
     /// <summary>cfg 为 null（未跑 Setup）时的中性样式，让 ApplyStyle 走统一赋值路径。</summary>

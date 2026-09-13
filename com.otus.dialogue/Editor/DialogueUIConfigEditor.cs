@@ -15,6 +15,7 @@ public class DialogueUIConfigEditor : Editor
 {
     private const string GlobalDefaultPath = "Assets/Resources/DialogueUIConfig.asset";
 
+    private bool _layoutFold = true;
     private bool _panelFold = true;
     private bool _plateFold = true;
     private bool _portraitFold = true;
@@ -25,6 +26,8 @@ public class DialogueUIConfigEditor : Editor
     // 缓存（projectChanged 失效）——防 Inspector 重绘期间反复 FindAssets 扫盘
     private int _referenceCount = -1;
     private List<TMP_FontAsset> _fonts;
+    private string _layoutCheckMessage;
+    private bool _layoutCheckIsError;
 
     private void OnEnable()
     {
@@ -50,6 +53,14 @@ public class DialogueUIConfigEditor : Editor
         if (targets.Length == 1)
         {
             DrawInfoBar();
+        }
+
+        _layoutFold = EditorGUILayout.Foldout(_layoutFold, "布局", true);
+        if (_layoutFold)
+        {
+            EditorGUI.indentLevel++;
+            DrawLayoutSection();
+            EditorGUI.indentLevel--;
         }
 
         _panelFold = EditorGUILayout.Foldout(_panelFold, "对话面板", true);
@@ -106,6 +117,74 @@ public class DialogueUIConfigEditor : Editor
         }
 
         serializedObject.ApplyModifiedProperties();
+    }
+
+    /// <summary>
+    /// 布局覆盖区：挂预制体 = 策划自由布置接管（按节点名解析）；空 = 代码默认布局。
+    /// 「导出」用导出工具生成可编辑模板，改坏必需节点时运行时自动回退默认并报错。
+    /// </summary>
+    private void DrawLayoutSection()
+    {
+        var prop = serializedObject.FindProperty("layoutPrefab");
+        EditorGUI.BeginChangeCheck();
+        EditorGUILayout.PropertyField(prop, new GUIContent("布局预制体（空 = 代码默认）"));
+        if (EditorGUI.EndChangeCheck())
+        {
+            _layoutCheckMessage = null; // 换了目标，旧校验结论作废
+        }
+
+        if (GUILayout.Button("导出当前 UI 为预制体…", EditorStyles.miniButton))
+        {
+            DialogueUIExportTool.Export(); // 导出后字段被写回，下帧重绘即显示
+        }
+
+        using (new EditorGUI.DisabledScope(prop.objectReferenceValue == null))
+        {
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button("检查布局预制体", EditorStyles.miniButton))
+                {
+                    CheckLayoutPrefab(prop);
+                }
+
+                if (GUILayout.Button("恢复默认", EditorStyles.miniButton))
+                {
+                    prop.objectReferenceValue = null;
+                    _layoutCheckMessage = null;
+                }
+            }
+        }
+
+        if (prop.objectReferenceValue == null)
+        {
+            EditorGUILayout.LabelField("当前为代码默认布局。想自由摆放节点/加装饰：先「导出」得到模板预制体再改。", EditorStyles.miniLabel);
+        }
+        else if (_layoutCheckMessage != null)
+        {
+            EditorGUILayout.HelpBox(_layoutCheckMessage, _layoutCheckIsError ? MessageType.Error : MessageType.Info);
+        }
+    }
+
+    private void CheckLayoutPrefab(SerializedProperty prop)
+    {
+        if (prop.objectReferenceValue is not GameObject prefab)
+        {
+            return;
+        }
+
+        var notes = new List<string>();
+        var problems = DialogueUILayoutContract.Validate(prefab, notes);
+        if (problems.Count > 0)
+        {
+            _layoutCheckIsError = true;
+            _layoutCheckMessage = "校验未通过（运行时会回退默认布局）：\n" + string.Join("\n", problems);
+            return;
+        }
+
+        _layoutCheckIsError = false;
+        _layoutCheckMessage = notes.Count == 0
+            ? "✓ 校验通过：必需节点齐全，无降级项。"
+            : "✓ 校验通过。降级运行项：\n" + string.Join("\n", notes);
     }
 
     /// <summary>顶部信息条：全局默认判定 / 被多少对话资产引用。</summary>

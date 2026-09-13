@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEditor;
 using UnityEngine;
 
@@ -175,7 +176,7 @@ public class DialogueTriggerWindow : EditorWindow
 
         EditorGUILayout.LabelField("全局入口（剧本导演）", EditorStyles.boldLabel);
 
-        foreach (var director in _directors)
+        foreach (var director in _directors.ToList()) // 快照遍历：行内「移除」会 Refresh 清空重填原列表，枚举器会抛 Collection was modified
         {
             if (director == null)
             {
