@@ -48,7 +48,7 @@ public static class DialogueSetupTool
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
         Debug.Log("[Dialogue Setup] 全部完成：中文字体、sprite border（含头像框）、UI 配置、Speaker 资产、Demo 对话与 Cube 接线。Demo 已含选项分支演示（n2 两选项）。进入 Play Mode 后点击 Cube 即可看到对话（左侧角色头像 + 无图首字缩写）。\n" +
-                  "策划提示：① 选中 Demo Dialogue 用卡片编辑器修改，试试把「下一句」下拉改为跳转，再用 Dialogue > Open Preview 免 Play 预览；② 右键 Create > Dialogue > Speaker 新建角色（配头像/名字颜色）；③ 选中 DialogueUIConfig 资产可在样式编辑器里调字体/背景/颜色，每段对话可在 Inspector 里「创建新样式…」单独覆盖。");
+                  "策划提示：① 选中 Demo Dialogue 用卡片编辑器修改，试试把「下一句」下拉改为跳转，再用 Dialogue > Open Preview 免 Play 预览；② 右键 Create > Dialogue > Speaker 新建角色（配头像/名字颜色）；③ 选中 DialogueUIConfig 资产可在样式编辑器里调字体/背景/颜色，每段对话可在 Inspector 里「创建新样式…」单独覆盖；④ 菜单 Dialogue > Trigger Manager 可视化管理场景对话触发器（靠近按 E 交谈 / 自动播放）。");
     }
 
     /// <summary>复制系统字体并用 Dynamic 模式生成 TMP 字体资产（运行时按需补字，任意中文可显示）。</summary>

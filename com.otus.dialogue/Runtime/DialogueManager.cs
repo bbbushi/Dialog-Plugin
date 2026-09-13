@@ -197,8 +197,21 @@ public class DialogueManager : MonoBehaviour
         _ui.ApplyStyle(_activeStyle);
 
         _ui.Show();
+        _ui.HideInteractPrompt(); // 开播即收掉「按 E 交谈」提示（触发器自己也收，双保险）
         DialogueStarted?.Invoke(_asset);
         EnterNode(node);
+    }
+
+    /// <summary>显示交互提示（DialogueTrigger 靠近范围内、未播放时调用），如「按 E 交谈」。</summary>
+    public void ShowInteractPrompt(string text)
+    {
+        _ui.ShowInteractPrompt(text);
+    }
+
+    /// <summary>收掉交互提示（触发器离开范围 / 对话开播时调用）。</summary>
+    public void HideInteractPrompt()
+    {
+        _ui.HideInteractPrompt();
     }
 
     /// <summary>清空会话记忆（变量/backlog/已读），供新游戏或测试重置；不影响正在播的对话状态机。</summary>

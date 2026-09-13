@@ -37,6 +37,11 @@ public class DialogueUI
     private readonly List<TextMeshProUGUI> _historyEntries = new List<TextMeshProUGUI>(); // ApplyStyle 就地重刷
     private TextMeshProUGUI _autoBadge;
 
+    // 交互提示（InteractPrompt：纸面小框 + 文本，挂 Canvas 与 Panel 平级——播放态显示 Panel、非播放态显示它）
+    private GameObject _interactPromptRoot;
+    private Image _interactPromptImage;
+    private TextMeshProUGUI _interactPrompt;
+
     // ApplyStyle 就地更新目标
     private Image _panelImage;
     private Image _plateImage;
@@ -256,6 +261,27 @@ public class DialogueUI
         badgeRect.sizeDelta = new Vector2(70, 30);
         _autoBadge.gameObject.SetActive(false);
 
+        // ---- InteractPrompt：靠近提示「按 E 交谈」，悬浮于面板正上方（面板占底部 25% = 180px）----
+        _interactPromptRoot = new GameObject("InteractPrompt", typeof(Image));
+        _interactPromptRoot.transform.SetParent(canvasGo.transform, false);
+        _interactPromptImage = _interactPromptRoot.GetComponent<Image>();
+        var promptRect = _interactPromptRoot.GetComponent<RectTransform>();
+        promptRect.anchorMin = new Vector2(0.5f, 0f);
+        promptRect.anchorMax = new Vector2(0.5f, 0f);
+        promptRect.pivot = new Vector2(0.5f, 0f);
+        promptRect.anchoredPosition = new Vector2(0f, 196f);
+        promptRect.sizeDelta = new Vector2(240f, 46f);
+
+        _interactPrompt = CreateText("PromptText", _interactPromptRoot.transform, null);
+        _interactPrompt.fontSize = 22;
+        _interactPrompt.alignment = TextAlignmentOptions.Center;
+        var promptTextRect = _interactPrompt.rectTransform;
+        promptTextRect.anchorMin = Vector2.zero;
+        promptTextRect.anchorMax = Vector2.one;
+        promptTextRect.offsetMin = Vector2.zero;
+        promptTextRect.offsetMax = Vector2.zero;
+        _interactPromptRoot.SetActive(false);
+
         // ---- EventSystem：项目场景零摆放且无处保证有 EventSystem，Button 点击依赖它，这里自举 ----
         var eventSystemGo = new GameObject("DialogueEventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
         eventSystemGo.transform.SetParent(canvasGo.transform, false);
@@ -357,6 +383,15 @@ public class DialogueUI
         _historyTitle.color = historyFg;
         _historyHint.color = historyFg;
         _autoBadge.color = cfg.SpeakerColor;
+
+        // 交互提示跟随换肤（与面板同款纸面/字体/文字色）
+        ApplySprite(_interactPromptImage, cfg.PanelSprite, new Color(0, 0, 0, 0.75f));
+        if (cfg.Font != null)
+        {
+            _interactPrompt.font = cfg.Font;
+        }
+
+        _interactPrompt.color = cfg.TextColor;
         foreach (var entry in _historyEntries)
         {
             if (cfg.Font != null)
@@ -499,6 +534,18 @@ public class DialogueUI
     public void SetAutoBadgeVisible(bool visible)
     {
         _autoBadge.gameObject.SetActive(visible);
+    }
+
+    /// <summary>显示交互提示（触发器靠近范围内、未播放时），如「按 E 交谈」。</summary>
+    public void ShowInteractPrompt(string text)
+    {
+        _interactPrompt.text = text;
+        _interactPromptRoot.SetActive(true);
+    }
+
+    public void HideInteractPrompt()
+    {
+        _interactPromptRoot.SetActive(false);
     }
 
     private static void ClearChildren(Transform root)
