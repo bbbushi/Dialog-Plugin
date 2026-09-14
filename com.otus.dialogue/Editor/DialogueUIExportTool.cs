@@ -41,6 +41,7 @@ public static class DialogueUIExportTool
 
             var ui = new DialogueUI();
             ui.Build(tempRoot.transform, styleOnly);
+            DialogueUI.AppendDefaultTemplates(tempRoot.transform.GetChild(0).transform); // 出厂预制体自带可定制条目模板
             PrefabUtility.SaveAsPrefabAsset(tempRoot.transform.GetChild(0).gameObject, path);
         }
         finally
@@ -61,7 +62,9 @@ public static class DialogueUIExportTool
         EditorGUIUtility.PingObject(prefab);
         Debug.Log($"[Dialogue] UI 布局预制体已导出并接入配置：{path}\n" +
                   "现在可在预制体里自由改布局/加装饰（别改节点名）。删可选节点只是对应功能降级；" +
-                  "清空配置里的「布局预制体」字段即回代码默认。");
+                  "清空配置里的「布局预制体」字段即回代码默认。\n" +
+                  "预制体内附带未激活的 ChoiceTemplate/EntryTemplate（选项按钮/历史条目模板）：保持未激活，" +
+                  "改其配色/字号/结构即改对应条目观感；删除模板则该条目回代码生成（配色走配置）。字体资产仍归配置统一。");
     }
 
     [MenuItem("Dialogue/UI/恢复默认布局")]

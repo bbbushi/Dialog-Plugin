@@ -9,6 +9,8 @@ using UnityEngine.UI;
 /// 运行时 DialogueUI.Build 靠它按名解析引用并校验；编辑器「检查布局预制体」与
 /// EditMode 测试复用同一份事实源，防默认实现与契约漂移。改任何节点名都要同步这里。
 /// 必需节点缺失 → 回退代码默认布局并报错；可选节点缺失 → 对应功能静默降级。
+/// ChoiceTemplate/EntryTemplate 为动态条目模板（导出工具附带）：应保持未激活，
+/// 缺失或不可用时对应条目退回代码生成（出厂默认观感）。
 /// </summary>
 public static class DialogueUILayoutContract
 {
@@ -52,6 +54,10 @@ public static class DialogueUILayoutContract
         new NodeSpec("AutoBadge", typeof(TextMeshProUGUI), false, "不显示 AUTO 角标（自动播放仍可用）"),
         new NodeSpec("Title", typeof(TextMeshProUGUI), false, "历史窗无标题"),
         new NodeSpec("Hint", typeof(TextMeshProUGUI), false, "历史窗无关闭提示"),
+
+        // 动态条目模板（应保持未激活）：存在时选项按钮/历史条目按模板克隆，配色字号归模板
+        new NodeSpec("ChoiceTemplate", typeof(Button), false, "玩家选项按钮退回代码生成（出厂默认观感）"),
+        new NodeSpec("EntryTemplate", typeof(TextMeshProUGUI), false, "历史条目退回代码生成"),
     };
 
     /// <summary>按名递归找第一个精确匹配的后代（不含根自身；层级深浅、嵌套位置自由）。</summary>

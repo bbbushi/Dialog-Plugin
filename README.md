@@ -24,8 +24,10 @@
 6. 自定义 UI 布局（可选）：默认 UI 由代码搭建、零配置。想自由摆放时：`DialogueUIConfig` Inspector 的「布局」区（或菜单 `Dialogue > UI > 导出当前 UI 为预制体…`）把当前 UI 导出为预制体模板并自动挂回配置——之后在预制体里随意改布局/加装饰/做动画，运行时按节点名解析引用。规则：
    - **别改节点名**：必需节点（Panel、BodyText、ChoiceRoot、HistoryRoot、HistoryScroll、Viewport、Content、InteractPrompt、PromptText）缺任一，运行时自动回退默认布局并在 Console 报错；配置里「检查布局预制体」可一键定位
    - 可选节点（头像框/姓名牌/▼箭头/AUTO 角标/历史窗标题等）删掉只降级对应功能，不报错
+   - 摆好的位置不会被运行时冲掉：正文让位（头像出现时右移）、▼箭头呼吸动画都以预制体里的摆放值为基准做相对偏移
+   - **动态条目模板**：预制体自带两个未激活的 `ChoiceTemplate`（选项按钮：Button+底图+Label 文本）与 `EntryTemplate`（历史条目：根即文本）——改模板的配色/字号/结构即改对应条目观感；删除模板则该条目回代码生成（配色走配置）。模板需保持未激活；选项文本取「名为 Label 的子节点」优先
    - 嵌套层级自由、可加任意装饰节点；ScrollRect 接线、布局组等**功能组件**缺失会自动补齐，改不坏
-   - 皮肤（字体/颜色/九宫格贴图）仍归 DialogueUIConfig 管；清空「布局预制体」字段即回代码默认
+   - 皮肤归 DialogueUIConfig 管（字体/九宫格贴图；无模板时的选项配色）。模板存在时条目配色归模板——美术接管；清空「布局预制体」字段即回代码默认
 
 ## 开发者引导（改包代码）
 
@@ -38,7 +40,7 @@
 
 | 模块 | 说明 |
 |---|---|
-| Runtime/Dialogue.asmdef | 数据层（DialogueAsset/Node/SpeakerAsset/UIConfig）+ 运行时（Manager 状态机打字机 / UI 代码自建 + 布局预制体覆盖 / Validator / 布局契约） |
+| Runtime/Dialogue.asmdef | 数据层（DialogueAsset/Node/SpeakerAsset/UIConfig）+ 运行时（Manager 状态机打字机 / UI 代码自建 + 布局预制体覆盖 + 条目模板克隆 / Validator / 布局契约） |
 | Editor/Dialogue.Editor.asmdef | 卡片 Inspector、免 Play 预览窗、节点图、对话启动管理器、样式编辑器、UI 布局导出与校验工具、Setup 工具、保存校验钩子 |
 | Tests/Editor | EditMode 单元测试（数据跳转/校验规则/Speaker 回退链/样式解析/布局契约与回退） |
 
@@ -49,6 +51,6 @@
 - 对话触发（`Dialogue > Dialogue Trigger` 组件，或启动管理器一键添加）：**靠近+按键**（Trigger Collider 感应玩家 Tag，范围内显示「按 E 交谈」提示，按键可改；缺 Collider 时自动补 Box Collider）/ **自动播放**（场景加载后延迟 N 秒）；「只触发一次」为本次运行标记，不写入存档。点击物体的 Demo 用法仍是 DialogueDemoTrigger
 - 视觉小说全局入口用 `DialogueDirector`（章节自动串播 + 变量条件分歧 + Finished 事件）；它假定自己是唯一对话驱动，不要与触发器混用。跨章节存档目前需自行记录章节索引（快照为单对话粒度）
 - 每对话样式：Dialogue 资产 Inspector 里「创建新样式…」以全局默认为起点
-- UI：默认代码搭建零配置；要人为布置用「导出当前 UI 为预制体」（快速开始 6）。布局归预制体、皮肤归配置，缺必需节点运行时自动回退默认布局
+- UI：默认代码搭建零配置；要人为布置用「导出当前 UI 为预制体」（快速开始 6）。布局归预制体、皮肤归配置，缺必需节点运行时自动回退默认布局。配置了 `ChoiceTemplate`/`EntryTemplate` 模板后，选项按钮/历史条目的配色字号归模板（配置里的选项底色/选项文字色只作用于无模板的代码生成观感）
 - 本项目开发者注意：本项目 `Assets/Dialogue/` 与 `Samples~/BasicDemo/` 内容同源同 GUID，**不要在本项目重复导入 Samples**（GUID 冲突）
 - 更新发布：改代码 → 提升 `package.json` 的 version → 重新分发；脚本 GUID 不变，用户资产引用不断

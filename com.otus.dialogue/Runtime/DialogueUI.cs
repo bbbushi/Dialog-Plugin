@@ -22,10 +22,27 @@ public class DialogueUI
     private const float PortraitInset = 18f;   // 头像内缩（略小于 border 22，纸框花纹不全吃掉）
     private const float BodyDefaultX = 28f;    // 无头像时正文左边距
     private const float BodyIndentX = 140f;    // 有头像时正文左边距
+    private const float BodyIndentShift = BodyIndentX - BodyDefaultX; // 头像出现时的相对让位量（authored 基准上加的增量）
+    private const float ArrowBreathRange = 6f; // "▼"呼吸幅度（authored 位置上的相对偏移）
+
+    // 选项无配置兜底色（代码生成分支与模板工厂共用，防两处漂移）
+    private static readonly Color ChoiceBgFallback = new Color(0.96f, 0.91f, 0.82f, 0.95f);
+    private static readonly Color ChoiceFgFallback = new Color(0.35f, 0.22f, 0.12f, 1f);
+
+    // authored 布局基准：Build 成功后快照策划摆放值，运行时改写一律写成「基准 + 相对量」，
+    // 保证预制体模式下 SetSpeaker 的正文让位与 Tick 的箭头呼吸不再冲掉策划摆放
+    private bool _authoredCaptured;
+    private Vector2 _bodyOffsetMinAuthored;
+    private Vector2 _arrowPositionAuthored;
 
     private GameObject _panel;
     private GameObject _choiceRoot;
     private GameObject _namePlate;
+
+    // 动态条目模板（可选，预制体模式解析；未激活常驻容器下，选项按钮/历史条目按需克隆替代代码生成。
+    // 被误销毁时 fake-null 判空成立，自动回退代码生成）
+    private GameObject _choiceTemplate;
+    private GameObject _entryTemplate;
     private TextMeshProUGUI _name;
     private TextMeshProUGUI _body;
     private TextMeshProUGUI _arrow;
@@ -36,7 +53,8 @@ public class DialogueUI
     private ScrollRect _historyScroll;
     private TextMeshProUGUI _historyTitle;
     private TextMeshProUGUI _historyHint;
-    private readonly List<TextMeshProUGUI> _historyEntries = new List<TextMeshProUGUI>(); // ApplyStyle 就地重刷
+    private readonly List<(TextMeshProUGUI text, bool templated)> _historyEntries
+        = new List<(TextMeshProUGUI, bool)>(); // ApplyStyle 就地重刷；模板条目只刷字体不刷色
     private TextMeshProUGUI _autoBadge;
 
     // 交互提示（InteractPrompt：纸面小框 + 文本，挂 Canvas 与 Panel 平级——播放态显示 Panel、非播放态显示它）
@@ -296,6 +314,8 @@ public class DialogueUI
 
         _panel.SetActive(false); // 默认隐藏（只隐藏 Panel；Manager 常驻，规避自激活陷阱）
 
+        CaptureAuthoredLayout(); // 快照代码默认值作运行时改写基准
+
         ApplyStyle(cfg); // 样式赋值单点（含 cfg 为 null 的兜底）
     }
 
@@ -335,6 +355,7 @@ public class DialogueUI
 
         ResolveLayoutReferences(instance.transform);
         HealFunctionalComponents(instance);
+        CaptureAuthoredLayout(); // 快照策划摆放值作运行时改写基准（让位/呼吸只做相对偏移）
 
         // 动态态归零（与代码路径一致：Manager 常驻，默认全隐藏）
         _panel.SetActive(false);
@@ -382,6 +403,53 @@ public class DialogueUI
         _interactPromptRoot = DialogueUILayoutContract.Find(root, "InteractPrompt").gameObject;
         _interactPromptImage = _interactPromptRoot.GetComponent<Image>();
         _interactPrompt = ResolveComponent<TextMeshProUGUI>(root, "PromptText");
+
+        ResolveTemplates(root);
+    }
+
+    /// <summary>
+    /// 解析动态条目模板（可选）：ChoiceTemplate 需 Button 且子树内找得到 TMP 文本，EntryTemplate 根即 TMP；
+    /// 不可用（缺失/缺件/无文本）一律置 null 降级代码生成。模板必须未激活，激活会被当成多余条目。
+    /// </summary>
+    private void ResolveTemplates(Transform root)
+    {
+        var choiceNode = ResolveNodeWithComponent(root, "ChoiceTemplate", typeof(Button));
+        if (choiceNode != null && FindTemplateLabel(choiceNode) == null)
+        {
+            Debug.LogWarning("[Dialogue] ChoiceTemplate 内未找到 TMP 文本（建议子节点命名 Label），选项退回代码生成。");
+            choiceNode = null;
+        }
+
+        _choiceTemplate = choiceNode != null ? choiceNode.gameObject : null;
+
+        var entryNode = ResolveNodeWithComponent(root, "EntryTemplate", typeof(TextMeshProUGUI));
+        _entryTemplate = entryNode != null ? entryNode.gameObject : null;
+
+        NormalizeTemplateActive(_choiceTemplate, "ChoiceTemplate");
+        NormalizeTemplateActive(_entryTemplate, "EntryTemplate");
+    }
+
+    /// <summary>模板文本取用：子树内名「Label」的 TMP 优先，任意 TMP 兜底；皆无返回 null（降级代码生成）。</summary>
+    private static TextMeshProUGUI FindTemplateLabel(Transform node)
+    {
+        var labelNode = DialogueUILayoutContract.Find(node, "Label");
+        var label = labelNode != null ? labelNode.GetComponent<TextMeshProUGUI>() : null;
+        if (label == null)
+        {
+            label = node.GetComponentInChildren<TextMeshProUGUI>(true);
+        }
+
+        return label;
+    }
+
+    /// <summary>模板应为未激活（激活会被布局组当成多余条目渲染）：激活则警告并归一化。</summary>
+    private static void NormalizeTemplateActive(GameObject template, string name)
+    {
+        if (template != null && template.activeSelf)
+        {
+            Debug.LogWarning($"[Dialogue] 布局预制体的 {name} 模板应为未激活，已自动停用（激活状态会被当成多余条目）。");
+            template.SetActive(false);
+        }
     }
 
     /// <summary>找节点且必须挂指定组件，缺一按「节点不存在」处理（与契约的可选降级语义一致）。</summary>
@@ -486,6 +554,77 @@ public class DialogueUI
         eventSystemGo.transform.SetParent(canvasParent, false);
     }
 
+    /// <summary>
+    /// 在已建好的代码默认层级上追加两个未激活的动态条目模板（导出工具调用：让出厂预制体自带
+    /// 可定制的选项按钮/历史条目外观；运行时代码路径不建模板，零配置行为不变）。
+    /// 模板的配色/字号归模板（改它即改观感），字体资产仍归配置（克隆时统一覆盖）。
+    /// </summary>
+    public static void AppendDefaultTemplates(Transform canvasRoot)
+    {
+        // ChoiceTemplate：选项按钮模板（Button + 底图 + Label 文本），挂在 ChoiceRoot 下
+        if (DialogueUILayoutContract.Find(canvasRoot, "ChoiceTemplate") == null)
+        {
+            var choiceRoot = DialogueUILayoutContract.Find(canvasRoot, "ChoiceRoot");
+            if (choiceRoot != null)
+            {
+                var template = new GameObject("ChoiceTemplate", typeof(Image), typeof(Button), typeof(LayoutElement));
+                template.transform.SetParent(choiceRoot, false);
+                var image = template.GetComponent<Image>();
+                image.color = ChoiceBgFallback;
+                image.raycastTarget = true; // 与代码生成的选项一致：底图参与射线保证可点
+                var element = template.GetComponent<LayoutElement>();
+                element.minHeight = 40f;
+                element.preferredWidth = 360f;
+
+                var label = CreateText("Label", template.transform, null);
+                label.text = "选项";
+                label.fontSize = 24;
+                label.alignment = TextAlignmentOptions.Center;
+                label.color = ChoiceFgFallback;
+                label.raycastTarget = true;
+                var labelRect = label.rectTransform;
+                labelRect.anchorMin = Vector2.zero;
+                labelRect.anchorMax = Vector2.one;
+                labelRect.offsetMin = Vector2.zero;
+                labelRect.offsetMax = Vector2.zero;
+
+                template.SetActive(false); // 模板常驻未激活，条目由克隆生成
+            }
+        }
+
+        // EntryTemplate：历史条目模板（根即 TMP 文本），挂在 Content 下
+        if (DialogueUILayoutContract.Find(canvasRoot, "EntryTemplate") == null)
+        {
+            var content = DialogueUILayoutContract.Find(canvasRoot, "Content");
+            if (content != null)
+            {
+                var entry = CreateText("EntryTemplate", content, null);
+                entry.text = "历史条目";
+                entry.fontSize = 22;
+                entry.enableWordWrapping = true;
+                var element = entry.gameObject.AddComponent<LayoutElement>();
+                element.preferredWidth = 0f; // 留空：克隆期未设置时按「面板宽 - 80」封顶，防横向溢出
+                entry.gameObject.SetActive(false);
+            }
+        }
+    }
+
+    /// <summary>快照 authored 布局基准（两条 Build 路径尾部各调一次）：正文 offsetMin 与箭头位置。</summary>
+    private void CaptureAuthoredLayout()
+    {
+        if (_body != null)
+        {
+            _bodyOffsetMinAuthored = _body.rectTransform.offsetMin;
+        }
+
+        if (_arrow != null)
+        {
+            _arrowPositionAuthored = _arrow.rectTransform.anchoredPosition;
+        }
+
+        _authoredCaptured = true;
+    }
+
     public void Show()
     {
         _panel.SetActive(true);
@@ -548,8 +687,16 @@ public class DialogueUI
         Color fallback = _activeConfig != null ? _activeConfig.SpeakerColor : Color.white;
         SetColor(_name, speaker != null ? speaker.ResolveNameColor(fallback) : fallback);
 
-        // 正文让位：头像区可用且有头像时右移，否则贴默认左边距
-        _body.rectTransform.offsetMin = new Vector2(portraitVisible ? BodyIndentX : BodyDefaultX, 14f);
+        // 正文让位：以 authored 基准为底、头像出现时右移固定增量（策划的 y 边距一并被尊重）；
+        // 未捕获（Build 前被调，防御）走旧常量
+        if (_authoredCaptured)
+        {
+            _body.rectTransform.offsetMin = _bodyOffsetMinAuthored + new Vector2(portraitVisible ? BodyIndentShift : 0f, 0f);
+        }
+        else
+        {
+            _body.rectTransform.offsetMin = new Vector2(portraitVisible ? BodyIndentX : BodyDefaultX, 14f);
+        }
     }
 
     /// <summary>设正文全文并立即重建网格；可见字数清零，由 Manager 逐字递增。</summary>
@@ -600,8 +747,11 @@ public class DialogueUI
         SetColor(_interactPrompt, cfg.TextColor);
         foreach (var entry in _historyEntries)
         {
-            SetFont(entry, cfg.Font);
-            entry.color = historyFg;
+            SetFont(entry.text, cfg.Font);
+            if (!entry.templated)
+            {
+                entry.text.color = historyFg; // 模板条目配色归模板（美术接管），换肤不动其颜色
+            }
         }
 
         // 换字体后旧网格可能残留（面板 inactive 时普通刷新不重建），强制重建双保险
@@ -632,13 +782,27 @@ public class DialogueUI
 
     /// <summary>
     /// 带可用标记的选项展示：enabledFlags[i]=false 的项置灰（alpha×0.45）且点击不回调。
+    /// 有 ChoiceTemplate 模板时按钮按模板克隆（配色/字号归模板），否则代码生成（配色归配置）。
     /// </summary>
     public void ShowChoices(IReadOnlyList<DialogueChoice> choices, Action<int> onSelected, IReadOnlyList<bool> enabledFlags)
     {
-        ClearChildren(_choiceRoot.transform);
+        ClearChildren(_choiceRoot.transform, TemplateTransform(_choiceTemplate));
 
-        Color bg = _activeConfig != null ? _activeConfig.ChoiceColor : new Color(0.96f, 0.91f, 0.82f, 0.95f);
-        Color fg = _activeConfig != null ? _activeConfig.ChoiceTextColor : new Color(0.35f, 0.22f, 0.12f, 1f);
+        if (_choiceTemplate != null)
+        {
+            for (int i = 0; i < choices.Count; i++)
+            {
+                // 缺项/null 一律视为可用，避免标记列表长度不一致时误伤
+                bool enabled = enabledFlags != null && i < enabledFlags.Count ? enabledFlags[i] : true;
+                CloneChoiceFromTemplate(i, choices[i].Text, enabled, onSelected);
+            }
+
+            _choiceRoot.SetActive(true);
+            return;
+        }
+
+        Color bg = _activeConfig != null ? _activeConfig.ChoiceColor : ChoiceBgFallback;
+        Color fg = _activeConfig != null ? _activeConfig.ChoiceTextColor : ChoiceFgFallback;
 
         for (int i = 0; i < choices.Count; i++)
         {
@@ -684,27 +848,76 @@ public class DialogueUI
         return new Color(color.r, color.g, color.b, color.a * 0.45f);
     }
 
-    /// <summary>清空并隐藏选项容器（选项被点击后由 Manager 调用）。</summary>
+    /// <summary>
+    /// 按模板克隆一个选项按钮：结构/配色/字号随模板（美术接管）；文本/回调/置灰归代码。
+    /// 模板缺功能件只补缺不覆盖（沿用自愈哲学）。
+    /// </summary>
+    private void CloneChoiceFromTemplate(int index, string text, bool enabled, Action<int> onSelected)
+    {
+        var clone = UnityEngine.Object.Instantiate(_choiceTemplate.gameObject, _choiceRoot.transform, false);
+        clone.name = $"Choice_{index}";
+        clone.SetActive(true); // 源模板未激活，克隆需显式激活
+
+        var element = clone.GetComponent<LayoutElement>();
+        if (element == null)
+        {
+            element = clone.AddComponent<LayoutElement>();
+        }
+
+        if (element.minHeight <= 0f)
+        {
+            element.minHeight = 40f;
+        }
+
+        if (element.preferredWidth <= 0f)
+        {
+            element.preferredWidth = 360f;
+        }
+
+        var label = FindTemplateLabel(clone.transform);
+        if (label != null)
+        {
+            label.text = text;
+            SetFont(label, _activeConfig != null ? _activeConfig.Font : null); // 字体资产归配置，为空尊重模板
+        }
+
+        if (enabled)
+        {
+            // 不 RemoveAllListeners：策划在模板 Button 上挂的持久监听（如点击音效）随克隆保留并先触发
+            clone.GetComponent<Button>().onClick.AddListener(() => onSelected?.Invoke(index));
+        }
+        else // 置灰项干脆不挂回调：点击天然无效；压透明度不改色相，天然兼容模板配色
+        {
+            foreach (var graphic in clone.GetComponentsInChildren<Graphic>(true))
+            {
+                graphic.color = Disabled(graphic.color);
+            }
+        }
+    }
+
+    /// <summary>清空并隐藏选项容器（选项被点击后由 Manager 调用；模板保留）。</summary>
     public void HideChoices()
     {
-        ClearChildren(_choiceRoot.transform);
+        ClearChildren(_choiceRoot.transform, TemplateTransform(_choiceTemplate));
         _choiceRoot.SetActive(false);
     }
 
     /// <summary>
     /// 展示历史窗并逐条重建文本；speaker 空视为旁白只出正文，完成后滚到最新一条。
+    /// 有 EntryTemplate 模板时条目按模板克隆（配色/字号归模板），否则代码生成（配色归配置）。
     /// </summary>
     public void ShowHistory(IReadOnlyList<(string speaker, string text)> entries)
     {
-        // 先失活旧条目再销毁：延迟销毁期间旧条目仍参与布局，会污染归底位置
+        // 先失活旧条目再销毁：销毁期间旧条目仍参与布局，会污染归底位置（对未激活模板是 no-op）
         for (int i = _historyContent.childCount - 1; i >= 0; i--)
         {
             _historyContent.GetChild(i).gameObject.SetActive(false);
         }
 
-        ClearChildren(_historyContent);
+        ClearChildren(_historyContent, TemplateTransform(_entryTemplate));
         _historyEntries.Clear();
 
+        bool templated = _entryTemplate != null;
         Color fg = _activeConfig != null ? _activeConfig.TextColor : Color.white;
         TMP_FontAsset font = _activeConfig?.Font;
         float width = Mathf.Max(100f, ((RectTransform)_panel.transform).rect.width - 80f);
@@ -712,14 +925,41 @@ public class DialogueUI
         for (int i = 0; i < entries.Count; i++)
         {
             string speaker = entries[i].speaker;
-            var entry = CreateText($"Entry_{i}", _historyContent, font);
-            entry.text = string.IsNullOrEmpty(speaker) ? entries[i].text : $"【{speaker}】{entries[i].text}";
-            entry.fontSize = 22;
-            entry.color = fg;
-            entry.enableWordWrapping = true;
-            var element = entry.gameObject.AddComponent<LayoutElement>();
-            element.preferredWidth = width; // 首选宽度封顶面板宽-80，超长自动折行
-            _historyEntries.Add(entry);
+            string text = string.IsNullOrEmpty(speaker) ? entries[i].text : $"【{speaker}】{entries[i].text}";
+            TextMeshProUGUI entry;
+
+            if (templated)
+            {
+                entry = UnityEngine.Object.Instantiate(_entryTemplate.gameObject, _historyContent, false)
+                    .GetComponent<TextMeshProUGUI>();
+                entry.gameObject.name = $"Entry_{i}";
+                entry.gameObject.SetActive(true); // 源模板未激活，克隆需显式激活
+                entry.text = text;
+                SetFont(entry, font); // 字体资产归配置；配色/字号随模板
+
+                var element = entry.GetComponent<LayoutElement>();
+                if (element == null)
+                {
+                    element = entry.gameObject.AddComponent<LayoutElement>();
+                }
+
+                if (element.preferredWidth <= 0f)
+                {
+                    element.preferredWidth = width; // 模板未给宽度才封顶「面板宽-80」，防横向溢出
+                }
+            }
+            else
+            {
+                entry = CreateText($"Entry_{i}", _historyContent, font);
+                entry.text = text;
+                entry.fontSize = 22;
+                entry.color = fg;
+                entry.enableWordWrapping = true;
+                var element = entry.gameObject.AddComponent<LayoutElement>();
+                element.preferredWidth = width; // 首选宽度封顶面板宽-80，超长自动折行
+            }
+
+            _historyEntries.Add((entry, templated));
         }
 
         _historyRoot.SetActive(true);
@@ -756,24 +996,63 @@ public class DialogueUI
         _interactPromptRoot.SetActive(false);
     }
 
-    private static void ClearChildren(Transform root)
+    /// <summary>模板保护用 transform（显式判空取值，Unity fake-null 下 ?. 不可靠）。</summary>
+    private static Transform TemplateTransform(GameObject template)
+    {
+        return template != null ? template.transform : null;
+    }
+
+    /// <summary>
+    /// 逆序清空子节点；keep（通常为条目模板）自身或其所在子树跳过——模板常驻容器下，清条目不得误删模板。
+    /// EditMode（测试/预览窗）用 DestroyImmediate 保证销毁确定性，Play 模式仍走帧末延迟销毁。
+    /// </summary>
+    private static void ClearChildren(Transform root, Transform keep = null)
     {
         for (int i = root.childCount - 1; i >= 0; i--)
         {
-            UnityEngine.Object.Destroy(root.GetChild(i).gameObject); // Object 因 using System 有歧义，全限定；EditMode 下延迟销毁，可接受
+            var child = root.GetChild(i);
+            if (keep != null && IsSelfOrAncestorOf(child, keep))
+            {
+                continue;
+            }
+
+            if (Application.isPlaying)
+            {
+                UnityEngine.Object.Destroy(child.gameObject); // Object 因 using System 有歧义，全限定
+            }
+            else
+            {
+                UnityEngine.Object.DestroyImmediate(child.gameObject);
+            }
         }
     }
 
-    /// <summary>每帧驱动（由 Manager.Update 调用）："▼"上下呼吸。</summary>
+    /// <summary>node 是否为 target 的自身或祖先（销毁 node 会连带 target，需跳过）。</summary>
+    private static bool IsSelfOrAncestorOf(Transform node, Transform target)
+    {
+        while (target != null)
+        {
+            if (target == node)
+            {
+                return true;
+            }
+
+            target = target.parent;
+        }
+
+        return false;
+    }
+
+    /// <summary>每帧驱动（由 Manager.Update 调用）："▼"上下呼吸（在 authored 位置上做相对偏移）。</summary>
     public void Tick(float time)
     {
-        if (_arrow == null || !_arrow.gameObject.activeSelf)
+        if (_arrow == null || !_arrow.gameObject.activeSelf || !_authoredCaptured)
         {
             return;
         }
 
         float breath = (Mathf.Sin(time * 4f) + 1f) * 0.5f; // 0..1
-        _arrow.rectTransform.anchoredPosition = new Vector2(-16, 26f + breath * 6f);
+        _arrow.rectTransform.anchoredPosition = _arrowPositionAuthored + new Vector2(0f, breath * ArrowBreathRange);
     }
 
     private static void ApplySprite(Image image, Sprite sprite, Color fallbackColor)

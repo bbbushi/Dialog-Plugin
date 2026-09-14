@@ -1,11 +1,18 @@
 {
     "name": "Dialogue.Tests",
     "references": [
-        "Dialogue"
+        "Dialogue",
+        "Unity.TextMeshPro",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner"
     ],
     "includePlatforms": [
         "Editor"
     ],
     "autoReferenced": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
     "testAssemblies": true
 }
