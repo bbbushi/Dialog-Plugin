@@ -221,5 +221,99 @@ namespace Dialogue.Tests.EditMode
             _ui.Tick(0f); // breath = 0.5 → (-16, 26+3)
             Assert.AreEqual(new Vector2(-16f, 29f), ((RectTransform)arrow).anchoredPosition, "代码路径呼吸轨迹与 1.4.0 一致");
         }
+
+        // ---------- 可选底图（1.5.1：姓名牌/头像框未设贴图 → 不显示底图而非兜底色块） ----------
+
+        [Test]
+        public void ApplyStyle_NoBackdropSprite_HidesPlateAndFrame_KeepsPanelAndChildren()
+        {
+            var cfg = ScriptableObject.CreateInstance<DialogueUIConfig>();
+            try
+            {
+                _ui.ApplyStyle(cfg); // Build 尾部已用 NullConfig 贴过一次，这里再走空配置路径
+
+                var plate = DialogueUILayoutContract.Find(Canvas.transform, "NamePlate").GetComponent<Image>();
+                Assert.IsFalse(plate.enabled, "未设姓名牌贴图 → 底图不渲染");
+                Assert.IsTrue(plate.gameObject.activeSelf, "GameObject 保持激活（名字文本是子物件，不连坐）");
+
+                var frame = DialogueUILayoutContract.Find(Canvas.transform, "PortraitFrame").GetComponent<Image>();
+                Assert.IsFalse(frame.enabled, "未设头像框贴图 → 框底不渲染");
+
+                var panel = DialogueUILayoutContract.Find(Canvas.transform, "Panel").GetComponent<Image>();
+                Assert.IsTrue(panel.enabled, "面板本体保持纯色兜底（正文可读性兜底，不隐藏）");
+            }
+            finally
+            {
+                Object.DestroyImmediate(cfg);
+            }
+        }
+
+        [Test]
+        public void ApplyStyle_PrefabAuthoredBackdrop_KeepsSpriteWhenConfigEmpty()
+        {
+            // 策划直接把贴图画在预制体 NamePlate 的 Image 上（含着色），config 不设 → 保留策划底图
+            var tex = new Texture2D(8, 8);
+            var sprite = Sprite.Create(tex, new Rect(0f, 0f, 8f, 8f), new Vector2(0.5f, 0.5f), 100f);
+            var cfg = ScriptableObject.CreateInstance<DialogueUIConfig>();
+            var host = new GameObject("AuthoredBackdropHost");
+            try
+            {
+                var source = DialogueUILayoutContract.Find(Canvas.transform, "NamePlate").GetComponent<Image>();
+                source.sprite = sprite;
+                source.color = new Color(1f, 0.5f, 0.5f, 1f);
+
+                var ui = BuildFromLayoutSource(Canvas, host, cfg);
+                ui.ApplyStyle(cfg);
+
+                var plate = DialogueUILayoutContract.Find(host.transform, "NamePlate").GetComponent<Image>();
+                Assert.IsTrue(plate.enabled, "预制体自带贴图应作为底图来源");
+                Assert.AreSame(sprite, plate.sprite, "保留策划贴图");
+                Assert.AreEqual(new Color(1f, 0.5f, 0.5f, 1f), plate.color, "保留策划着色");
+            }
+            finally
+            {
+                Object.DestroyImmediate(host);
+                Object.DestroyImmediate(cfg);
+                Object.DestroyImmediate(sprite);
+                Object.DestroyImmediate(tex);
+            }
+        }
+
+        [Test]
+        public void ApplyStyle_ConfigBackdropSprite_OverridesAuthored()
+        {
+            var texA = new Texture2D(8, 8);
+            var authored = Sprite.Create(texA, new Rect(0f, 0f, 8f, 8f), Vector2.zero, 100f);
+            var texB = new Texture2D(8, 8);
+            var fromConfig = Sprite.Create(texB, new Rect(0f, 0f, 8f, 8f), Vector2.zero, 100f);
+            var cfg = ScriptableObject.CreateInstance<DialogueUIConfig>();
+            var host = new GameObject("ConfigBackdropHost");
+            try
+            {
+                DialogueUILayoutContract.Find(Canvas.transform, "NamePlate").GetComponent<Image>().sprite = authored;
+
+                var so = new SerializedObject(cfg);
+                so.FindProperty("nameSprite").objectReferenceValue = fromConfig;
+                so.ApplyModifiedPropertiesWithoutUndo();
+
+                var ui = BuildFromLayoutSource(Canvas, host, cfg);
+                ui.ApplyStyle(cfg);
+
+                var plate = DialogueUILayoutContract.Find(host.transform, "NamePlate").GetComponent<Image>();
+                Assert.IsTrue(plate.enabled);
+                Assert.AreSame(fromConfig, plate.sprite, "配置贴图优先于预制体自带");
+                Assert.AreEqual(Image.Type.Sliced, plate.type, "配置九宫格贴图按 Sliced 铺");
+                Assert.AreEqual(Color.white, plate.color);
+            }
+            finally
+            {
+                Object.DestroyImmediate(host);
+                Object.DestroyImmediate(cfg);
+                Object.DestroyImmediate(authored);
+                Object.DestroyImmediate(fromConfig);
+                Object.DestroyImmediate(texA);
+                Object.DestroyImmediate(texB);
+            }
+        }
     }
 }

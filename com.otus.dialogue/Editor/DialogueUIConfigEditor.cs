@@ -16,6 +16,7 @@ public class DialogueUIConfigEditor : Editor
     private const string GlobalDefaultPath = "Assets/Resources/DialogueUIConfig.asset";
 
     private bool _layoutFold = true;
+    private bool _backgroundFold = true;
     private bool _panelFold = true;
     private bool _plateFold = true;
     private bool _portraitFold = true;
@@ -63,6 +64,14 @@ public class DialogueUIConfigEditor : Editor
             EditorGUI.indentLevel--;
         }
 
+        _backgroundFold = EditorGUILayout.Foldout(_backgroundFold, "全屏背景", true);
+        if (_backgroundFold)
+        {
+            EditorGUI.indentLevel++;
+            DrawSpriteField(serializedObject.FindProperty("backgroundSprite"), "背景图（不设 = 透明，露出游戏画面）");
+            EditorGUI.indentLevel--;
+        }
+
         _panelFold = EditorGUILayout.Foldout(_panelFold, "对话面板", true);
         if (_panelFold)
         {
@@ -75,7 +84,7 @@ public class DialogueUIConfigEditor : Editor
         if (_plateFold)
         {
             EditorGUI.indentLevel++;
-            DrawSpriteField(serializedObject.FindProperty("nameSprite"), "姓名牌背景（九宫格）");
+            DrawSpriteField(serializedObject.FindProperty("nameSprite"), "姓名牌背景（九宫格；不设 = 不显示底图）");
             DrawColorField("speakerColor", "名字默认色（角色可在 Speaker 资产里覆盖）");
             EditorGUI.indentLevel--;
         }
@@ -84,7 +93,7 @@ public class DialogueUIConfigEditor : Editor
         if (_portraitFold)
         {
             EditorGUI.indentLevel++;
-            DrawSpriteField(serializedObject.FindProperty("portraitFrameSprite"), "头像框背景（九宫格）");
+            DrawSpriteField(serializedObject.FindProperty("portraitFrameSprite"), "头像框背景（九宫格；不设 = 不显示框底）");
             EditorGUI.indentLevel--;
         }
 

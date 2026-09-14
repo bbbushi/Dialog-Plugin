@@ -259,6 +259,13 @@ public class DialoguePreviewWindow : EditorWindow
     {
         // 面板整体：点击 = Advance / 结束后 = 重播
         Rect panelRect = GUILayoutUtility.GetRect(0, 190, GUILayout.ExpandWidth(true));
+
+        // 全屏背景：与运行时同语义，未设 = 不画（窗口内以面板区域为界）
+        if (_styleConfig != null && _styleConfig.BackgroundSprite != null)
+        {
+            GUI.DrawTexture(panelRect, _styleConfig.BackgroundSprite.texture, ScaleMode.ScaleAndCrop);
+        }
+
         GUI.Label(panelRect, GUIContent.none, _panelStyle);
 
         if (Event.current.type == EventType.MouseDown && panelRect.Contains(Event.current.mousePosition))
@@ -282,7 +289,11 @@ public class DialoguePreviewWindow : EditorWindow
         if (speaker != null)
         {
             var frameRect = new Rect(panelRect.x + 14, panelRect.y + (panelRect.height - 88) / 2, 88, 88);
-            GUI.Label(frameRect, GUIContent.none, _portraitStyle);
+            // 框底与运行时同语义：未配置贴图 → 不显示（头像/首字照常）
+            if (_styleConfig != null && _styleConfig.PortraitFrameSprite != null)
+            {
+                GUI.Label(frameRect, GUIContent.none, _portraitStyle);
+            }
             Rect inner = new RectOffset(12, 12, 12, 12).Remove(frameRect);
             if (speaker.Portrait != null)
             {

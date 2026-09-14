@@ -15,7 +15,7 @@
 1. 导入本包后，菜单 `Dialogue > Setup All`：
    - 生成中文 TMP 字体（Dynamic 模式，从系统 SimHei/微软雅黑复制；商用请自备授权字体）
    - 生成全局样式 `Assets/Resources/DialogueUIConfig.asset`
-   - 若项目装了 Paper UI 素材包则自动接线纸质贴图，否则使用纯色兜底（可在 config 里手动指定）
+   - 若项目装了 Paper UI 素材包则自动接线纸质贴图，否则面板用纯色兜底（可在 config 里手动指定）；姓名牌/头像框底图未设置时不显示（名字文本/头像照常）
    - 生成 Demo 对话并接线场景中的 Cube（可选）
 2. 导入 Samples 的 BasicDemo 得到示例对话与角色
 3. 策划工作流：选中 Dialogue 资产 → 卡片编辑器（下一句下拉防断链）→ `Dialogue > Open Preview` 免 Play 试玩 → 保存时自动校验
@@ -23,11 +23,12 @@
 5. 视觉小说全局入口：管理器里「＋ 全局入口」挂 `DialogueDirector`（或 `Add Component > Dialogue > Dialogue Director`）——按顺序拖入章节对话资产即自动串播（playOnStart 开场自动开播），每章可写变量条件（不满足自动跳过，同位多条做分歧结局），播完触发 `Finished` 事件（接主菜单/制作名单）
 6. 自定义 UI 布局（可选）：默认 UI 由代码搭建、零配置。想自由摆放时：`DialogueUIConfig` Inspector 的「布局」区（或菜单 `Dialogue > UI > 导出当前 UI 为预制体…`）把当前 UI 导出为预制体模板并自动挂回配置——之后在预制体里随意改布局/加装饰/做动画，运行时按节点名解析引用。规则：
    - **别改节点名**：必需节点（Panel、BodyText、ChoiceRoot、HistoryRoot、HistoryScroll、Viewport、Content、InteractPrompt、PromptText）缺任一，运行时自动回退默认布局并在 Console 报错；配置里「检查布局预制体」可一键定位
-   - 可选节点（头像框/姓名牌/▼箭头/AUTO 角标/历史窗标题等）删掉只降级对应功能，不报错
+   - 可选节点（全屏背景/头像框/姓名牌/▼箭头/AUTO 角标/历史窗标题等）删掉只降级对应功能，不报错；全屏背景节点（Background）放层级最底层
    - 摆好的位置不会被运行时冲掉：正文让位（头像出现时右移）、▼箭头呼吸动画都以预制体里的摆放值为基准做相对偏移
    - **动态条目模板**：预制体自带两个未激活的 `ChoiceTemplate`（选项按钮：Button+底图+Label 文本）与 `EntryTemplate`（历史条目：根即文本）——改模板的配色/字号/结构即改对应条目观感；删除模板则该条目回代码生成（配色走配置）。模板需保持未激活；选项文本取「名为 Label 的子节点」优先
    - 嵌套层级自由、可加任意装饰节点；ScrollRect 接线、布局组等**功能组件**缺失会自动补齐，改不坏
-   - 皮肤归 DialogueUIConfig 管（字体/九宫格贴图；无模板时的选项配色）。模板存在时条目配色归模板——美术接管；清空「布局预制体」字段即回代码默认
+   - 皮肤归 DialogueUIConfig 管（字体/九宫格贴图/全屏背景；无模板时的选项配色）。模板存在时条目配色归模板——美术接管；清空「布局预制体」字段即回代码默认
+   - **全屏背景**：config 的「全屏背景」区设图即得整屏底图（不设 = 透明，露出游戏画面）；每个对话可在自己的 Inspector 里「创建新样式」覆盖换背景（章节切换场景用）
 
 ## 开发者引导（改包代码）
 

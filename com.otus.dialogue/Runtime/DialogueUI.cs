@@ -35,6 +35,15 @@ public class DialogueUI
     private Vector2 _bodyOffsetMinAuthored;
     private Vector2 _arrowPositionAuthored;
 
+    // authored 底图（姓名牌/头像框/全屏背景）：配置贴图未设时以预制体 Image 上自带的贴图/着色为准，
+    // 两者皆无 → 底图不渲染（ApplyBackdrop）。代码默认路径无贴图 → 纯文字/裸头像观感
+    private Sprite _plateSpriteAuthored;
+    private Color _plateColorAuthored = Color.white;
+    private Sprite _frameSpriteAuthored;
+    private Color _frameColorAuthored = Color.white;
+    private Sprite _bgSpriteAuthored;
+    private Color _bgColorAuthored = Color.white;
+
     private GameObject _panel;
     private GameObject _choiceRoot;
     private GameObject _namePlate;
@@ -63,6 +72,7 @@ public class DialogueUI
     private TextMeshProUGUI _interactPrompt;
 
     // ApplyStyle 就地更新目标
+    private Image _backgroundImage;
     private Image _panelImage;
     private Image _plateImage;
     private GameObject _portraitRoot;
@@ -99,6 +109,14 @@ public class DialogueUI
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1280, 720);
         scaler.matchWidthOrHeight = 0.5f;
+
+        // ---- Background：全屏背景（首个子节点 = 最底层；未配置贴图时整体不渲染，露出游戏画面） ----
+        _backgroundImage = CreateImage("Background", canvasGo.transform);
+        var bgRect = _backgroundImage.rectTransform;
+        bgRect.anchorMin = Vector2.zero;
+        bgRect.anchorMax = Vector2.one;
+        bgRect.offsetMin = Vector2.zero;
+        bgRect.offsetMax = Vector2.zero;
 
         // ---- Panel：纸质对话框，贴底占 25% 高 ----
         _panel = new GameObject("Panel", typeof(Image));
@@ -313,6 +331,7 @@ public class DialogueUI
         EnsureEventSystem(canvasGo.transform);
 
         _panel.SetActive(false); // 默认隐藏（只隐藏 Panel；Manager 常驻，规避自激活陷阱）
+        _backgroundImage.gameObject.SetActive(false); // 背景随面板走：非播放态不遮挡游戏画面
 
         CaptureAuthoredLayout(); // 快照代码默认值作运行时改写基准
 
@@ -355,10 +374,15 @@ public class DialogueUI
 
         ResolveLayoutReferences(instance.transform);
         HealFunctionalComponents(instance);
+        EnsureBackgroundNode(instance.transform); // 旧版本导出的预制体没有 Background，补建后配置背景才生效
         CaptureAuthoredLayout(); // 快照策划摆放值作运行时改写基准（让位/呼吸只做相对偏移）
 
         // 动态态归零（与代码路径一致：Manager 常驻，默认全隐藏）
         _panel.SetActive(false);
+        if (_backgroundImage != null)
+        {
+            _backgroundImage.gameObject.SetActive(false);
+        }
         _choiceRoot.SetActive(false);
         _historyRoot.SetActive(false);
         _interactPromptRoot.SetActive(false);
@@ -375,6 +399,9 @@ public class DialogueUI
     /// <summary>按契约节点名把实例解析进字段。可选节点缺失（或组件被删）一律解析为 null，后续判空降级。</summary>
     private void ResolveLayoutReferences(Transform root)
     {
+        var background = ResolveNodeWithComponent(root, "Background", typeof(Image));
+        _backgroundImage = background != null ? background.GetComponent<Image>() : null;
+
         _panel = DialogueUILayoutContract.Find(root, "Panel").gameObject;
         _panelImage = _panel.GetComponent<Image>(); // 面板底图可由子节点承担，缺 Image 只是不吃贴图
 
@@ -517,6 +544,27 @@ public class DialogueUI
         }
     }
 
+    /// <summary>
+    /// 补建缺失的全屏背景节点：1.6.0 之前导出的布局预制体里没有 Background，
+    /// 缺了会让配置的背景贴图静默失效。建为根的首个子节点（最底层），只建空节点——
+    /// 未配置贴图时 ApplyBackdrop 不渲染，无意删掉它的策划不受影响。
+    /// </summary>
+    private void EnsureBackgroundNode(Transform root)
+    {
+        if (_backgroundImage != null)
+        {
+            return;
+        }
+
+        _backgroundImage = CreateImage("Background", root);
+        _backgroundImage.transform.SetAsFirstSibling(); // 最底层，别盖住面板
+        var rect = _backgroundImage.rectTransform;
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
+    }
+
     /// <summary>垂直容器自愈：布局组/高度自适应缺失才补（已有则尊重策划的间距等参数）。</summary>
     private static void HealVerticalContainer(Transform container)
     {
@@ -609,7 +657,7 @@ public class DialogueUI
         }
     }
 
-    /// <summary>快照 authored 布局基准（两条 Build 路径尾部各调一次）：正文 offsetMin 与箭头位置。</summary>
+    /// <summary>快照 authored 布局基准（两条 Build 路径尾部各调一次）：正文 offsetMin、箭头位置、可选底图。</summary>
     private void CaptureAuthoredLayout()
     {
         if (_body != null)
@@ -622,17 +670,43 @@ public class DialogueUI
             _arrowPositionAuthored = _arrow.rectTransform.anchoredPosition;
         }
 
+        if (_plateImage != null)
+        {
+            _plateSpriteAuthored = _plateImage.sprite;
+            _plateColorAuthored = _plateImage.color;
+        }
+
+        if (_portraitFrameImage != null)
+        {
+            _frameSpriteAuthored = _portraitFrameImage.sprite;
+            _frameColorAuthored = _portraitFrameImage.color;
+        }
+
+        if (_backgroundImage != null)
+        {
+            _bgSpriteAuthored = _backgroundImage.sprite;
+            _bgColorAuthored = _backgroundImage.color;
+        }
+
         _authoredCaptured = true;
     }
 
     public void Show()
     {
         _panel.SetActive(true);
+        if (_backgroundImage != null)
+        {
+            _backgroundImage.gameObject.SetActive(true);
+        }
     }
 
     public void Hide()
     {
         _panel.SetActive(false);
+        if (_backgroundImage != null)
+        {
+            _backgroundImage.gameObject.SetActive(false);
+        }
     }
 
     /// <summary>
@@ -719,8 +793,10 @@ public class DialogueUI
 
         // 预制体布局下可选节点可能不存在（或缺组件），赋值统一判空降级；默认布局引用恒全
         ApplySprite(_panelImage, cfg.PanelSprite, new Color(0, 0, 0, 0.75f));
-        ApplySprite(_plateImage, cfg.NameSprite, new Color(0.15f, 0.1f, 0.06f, 0.9f));
-        ApplySprite(_portraitFrameImage, cfg.PortraitFrameSprite, new Color(0.2f, 0.16f, 0.1f, 0.9f));
+        // 全屏背景/姓名牌/头像框底图：配置贴图 > 预制体自带贴图 > 整块不渲染（露出下层画面）
+        ApplyBackdrop(_backgroundImage, cfg.BackgroundSprite, _bgSpriteAuthored, _bgColorAuthored);
+        ApplyBackdrop(_plateImage, cfg.NameSprite, _plateSpriteAuthored, _plateColorAuthored);
+        ApplyBackdrop(_portraitFrameImage, cfg.PortraitFrameSprite, _frameSpriteAuthored, _frameColorAuthored);
 
         SetFont(_name, cfg.Font);
         SetFont(_body, cfg.Font);
@@ -1073,6 +1149,37 @@ public class DialogueUI
             image.sprite = null;
             image.type = Image.Type.Simple;
             image.color = fallbackColor;
+        }
+    }
+
+    /// <summary>
+    /// 可选底图（全屏背景/姓名牌/头像框）：配置贴图 > 预制体自带贴图（authored）> 不渲染。
+    /// 未设置时只关 Graphic 不关 GameObject——名字文本/头像是子物件，照常显示。
+    /// </summary>
+    private static void ApplyBackdrop(Image image, Sprite cfgSprite, Sprite authoredSprite, Color authoredColor)
+    {
+        if (image == null)
+        {
+            return; // 预制体布局里该节点可选拄件，缺 Image 无事可做
+        }
+
+        if (cfgSprite != null)
+        {
+            image.sprite = cfgSprite;
+            image.type = Image.Type.Sliced;
+            image.color = Color.white;
+            image.enabled = true;
+        }
+        else if (authoredSprite != null)
+        {
+            image.sprite = authoredSprite;
+            image.type = Image.Type.Sliced; // 无九宫格 border 的 Sliced 视觉等价 Simple
+            image.color = authoredColor;    // 保留策划着色
+            image.enabled = true;
+        }
+        else
+        {
+            image.enabled = false; // 未设置底图 → 不显示（不画兜底色块）
         }
     }
 

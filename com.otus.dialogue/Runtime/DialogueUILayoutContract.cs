@@ -45,6 +45,7 @@ public static class DialogueUILayoutContract
         new NodeSpec("PromptText", typeof(TextMeshProUGUI), true),
 
         // 可选：删掉只降级对应表现，不影响播放
+        new NodeSpec("Background", typeof(Image), false, "运行时自动补建空节点（配置背景仍可用）；要在预制体上直接贴图请自建并放最底层"),
         new NodeSpec("PortraitFrame", typeof(Image), false, "不显示头像区"),
         new NodeSpec("PortraitImage", typeof(Image), false, "头像图不显示（走首字缩写需保留 PortraitInitial）"),
         new NodeSpec("PortraitInitial", typeof(TextMeshProUGUI), false, "无头像时不显示首字缩写"),

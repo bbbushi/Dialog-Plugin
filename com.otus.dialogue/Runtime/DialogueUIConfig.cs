@@ -10,11 +10,13 @@ public class DialogueUIConfig : ScriptableObject
 {
     [SerializeField] private TMP_FontAsset font;
 
+    [SerializeField] private Sprite backgroundSprite; // 全屏背景（空 = 透明，露出游戏画面；每对话可用样式覆盖换图）
+
     [SerializeField] private Sprite panelSprite;
 
-    [SerializeField] private Sprite nameSprite;
+    [SerializeField] private Sprite nameSprite; // 姓名牌底图（九宫格；空 → 不显示底图，只留名字文本）
 
-    [SerializeField] private Sprite portraitFrameSprite; // 头像框（九宫格；空 → UI 兜底色块）
+    [SerializeField] private Sprite portraitFrameSprite; // 头像框底图（九宫格；空 → 不显示框底，头像照常）
 
     [SerializeField] private Color textColor = new Color32(0x3E, 0x2F, 0x23, 0xFF); // 深棕（纸面墨色）
 
@@ -34,6 +36,8 @@ public class DialogueUIConfig : ScriptableObject
     [SerializeField] private GameObject layoutPrefab;
 
     public TMP_FontAsset Font => font;
+
+    public Sprite BackgroundSprite => backgroundSprite;
 
     public Sprite PanelSprite => panelSprite;
 
