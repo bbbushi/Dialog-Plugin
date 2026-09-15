@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using TMPro;
@@ -47,8 +48,16 @@ public static class DialogueSetupTool
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
+        bool hasInteraction = Type.GetType("DialogueTrigger, Dialogue.Interaction") != null;
+        bool hasVn = Type.GetType("DialogueDirector, Dialogue.Vn") != null;
         Debug.Log("[Dialogue Setup] 全部完成：中文字体、sprite border（含头像框）、UI 配置、Speaker 资产、Demo 对话与 Cube 接线。Demo 已含选项分支演示（n2 两选项）。进入 Play Mode 后点击 Cube 即可看到对话（左侧角色头像 + 无图首字缩写）。\n" +
-                  "策划提示：① 选中 Demo Dialogue 用卡片编辑器修改，试试把「下一句」下拉改为跳转，再用 Dialogue > Open Preview 免 Play 预览；② 右键 Create > Dialogue > Speaker 新建角色（配头像/名字颜色）；③ 选中 DialogueUIConfig 资产可在样式编辑器里调字体/背景/颜色，每段对话可在 Inspector 里「创建新样式…」单独覆盖；④ 菜单 Dialogue > Trigger Manager 可视化管理场景对话触发器（靠近按 E 交谈 / 自动播放）。");
+                  "策划提示：① 选中 Demo Dialogue 用卡片编辑器修改，试试把「下一句」下拉改为跳转，再用 Dialogue > Open Preview 免 Play 预览；② 右键 Create > Dialogue > Speaker 新建角色（配头像/名字颜色）；③ 选中 DialogueUIConfig 资产可在样式编辑器里调字体/背景/颜色，每段对话可在 Inspector 里「创建新样式…」单独覆盖；"
+                  + (hasInteraction
+                      ? "④ 菜单 Dialogue > Trigger Manager 可视化管理场景对话触发器（靠近按 E 交谈 / 自动播放）。"
+                      : "④ 需要场景触发器（靠近按 E 交谈）时安装 com.otus.dialogue.interaction 扩展包。")
+                  + (hasVn
+                      ? "⑤ 视觉小说全局串播用 Dialogue > Director Manager。"
+                      : "⑤ 视觉小说章节串播（剧本导演）需安装 com.otus.dialogue.vn 扩展包。"));
     }
 
     /// <summary>复制系统字体并用 Dynamic 模式生成 TMP 字体资产（运行时按需补字，任意中文可显示）。</summary>
@@ -261,6 +270,7 @@ public static class DialogueSetupTool
             node.FindPropertyRelative("text").stringValue = data[i, 2];
             node.FindPropertyRelative("nextId").stringValue = string.Empty; // 全部留空 = 纯线性
             node.FindPropertyRelative("choices").ClearArray(); // 清残留选项：历史数据按 index 复位时旧的 choices 会串节点
+            node.FindPropertyRelative("commands").ClearArray(); // 同理清残留进入命令
         }
 
         // n2 挂三条选项分支（ClearArray 幂等，重跑不叠加）；第三条演示"条件置灰"（永不满足）
@@ -273,7 +283,16 @@ public static class DialogueSetupTool
         so.ApplyModifiedPropertiesWithoutUndo();
         EditorUtility.SetDirty(demo);
 
-        // 场景接线：给 Cube 挂触发器并赋值
+        // 场景接线：给 Cube 挂触发器并赋值。触发器 2.0 起移入 interaction 扩展包——
+        // core 不引用扩展程序集，按「类型名, 程序集名」探测，未装则跳过（不影响其余步骤）
+        var demoTriggerType = Type.GetType("DialogueDemoTrigger, Dialogue.Interaction");
+        if (demoTriggerType == null)
+        {
+            Debug.Log("[Dialogue Setup] 未安装 com.otus.dialogue.interaction 扩展包，跳过 Cube 触发器接线。"
+                + "需要「点击/靠近按键」触发或视觉小说章节串播时，安装 interaction / vn 扩展包。");
+            return;
+        }
+
         GameObject cube = GameObject.Find("Cube");
         if (cube == null)
         {
@@ -281,11 +300,7 @@ public static class DialogueSetupTool
             return;
         }
 
-        var trigger = cube.GetComponent<DialogueDemoTrigger>();
-        if (trigger == null)
-        {
-            trigger = cube.AddComponent<DialogueDemoTrigger>();
-        }
+        var trigger = cube.GetComponent(demoTriggerType) ?? cube.AddComponent(demoTriggerType);
 
         var triggerSo = new SerializedObject(trigger);
         triggerSo.FindProperty("dialogue").objectReferenceValue = demo;

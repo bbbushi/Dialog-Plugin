@@ -1,0 +1,7 @@
+{
+    "name": "Dialogue.Vn",
+    "references": [
+        "Dialogue"
+    ],
+    "autoReferenced": true
+}

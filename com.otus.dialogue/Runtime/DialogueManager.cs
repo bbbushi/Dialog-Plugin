@@ -30,6 +30,12 @@ public class DialogueManager : MonoBehaviour
     /// <summary>每句开始（参数：当前节点）。为将来任务/演出系统留缝。</summary>
     public event Action<DialogueNode> NodeBegan;
 
+    /// <summary>
+    /// 节点进入命令派发（参数：所属节点 + 单条命令）。core 只派发不解释——
+    /// 扩展包/项目脚本订阅执行（如 vn 包解释 bgm=xxx / sfx=xxx 换音乐音效）。
+    /// </summary>
+    public event Action<DialogueNode, DialogueCommand> CommandReceived;
+
     /// <summary>对话结束、面板隐藏后（参数：对话资产）。</summary>
     public event Action<DialogueAsset> DialogueEnded;
 
@@ -237,6 +243,7 @@ public class DialogueManager : MonoBehaviour
     {
         _current = node;
         NodeBegan?.Invoke(node);
+        DispatchCommands(node); // 命令槽派发（core 不解释；订阅方如 vn 包解释 bgm=/sfx=）
 
         // 已读判定必须在入集合前取；随后入集合 + 追加历史
         string key = NodeKey(_asset, node.Id);
@@ -250,6 +257,21 @@ public class DialogueManager : MonoBehaviour
         _visible = 0f;
         _ui.SetContinueVisible(false);
         _state = State.Typing;
+    }
+
+    /// <summary>逐条派发节点进入命令（顺序与配置一致；空命令名也会派发，由校验器在编辑期抓）。</summary>
+    private void DispatchCommands(DialogueNode node)
+    {
+        var commands = node.Commands;
+        if (commands == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < commands.Count; i++)
+        {
+            CommandReceived?.Invoke(node, commands[i]);
+        }
     }
 
     private void CompleteTyping()

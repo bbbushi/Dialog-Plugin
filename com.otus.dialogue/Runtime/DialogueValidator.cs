@@ -50,6 +50,9 @@ public enum DialogueIssueType
 
     /// <summary>选项条件/赋值表达式语法错误（错误级：运行时按无条件/跳过赋值兜底并报错）。</summary>
     BadChoiceCondition,
+
+    /// <summary>进入命令名为空（警告级：派发时订阅方无从解释。core 不校验命令语义）。</summary>
+    BadCommandName,
 }
 
 /// <summary>一条校验结果。NodeIndex = -1 表示资产级问题。</summary>
@@ -113,6 +116,20 @@ public static class DialogueValidator
             if (string.IsNullOrEmpty(node.ResolvedSpeakerName)) // 解析链：speaker 资产 > 旧 speakerName
             {
                 issues.Add(Issue(DialogueIssueType.EmptySpeaker, DialogueIssueSeverity.Warning, i, node, "说话人为空（运行时姓名牌将隐藏，若非旁白请补上）。"));
+            }
+
+            // 进入命令：只查空名，不校验语义（语义归扩展包/项目脚本定义）
+            var commands = node.Commands;
+            if (commands != null)
+            {
+                for (int c = 0; c < commands.Count; c++)
+                {
+                    if (string.IsNullOrWhiteSpace(commands[c].Name))
+                    {
+                        issues.Add(Issue(DialogueIssueType.BadCommandName, DialogueIssueSeverity.Warning, i, node,
+                            $"进入命令 #{c + 1} 名字为空，订阅方无从解释。"));
+                    }
+                }
             }
 
             string id = node.Id;

@@ -1,0 +1,13 @@
+{
+  "name": "com.otus.dialogue.interaction",
+  "version": "1.0.0",
+  "displayName": "Otus Dialogue Interaction",
+  "description": "通用游戏交互扩展：对话触发器（靠近+按 E 交谈/自动播放）、点击开播 Demo 与触发器管理窗口。适合给已有自己音频/存档系统的游戏项目添加对话系统。需先安装核心包 com.otus.dialogue。",
+  "unity": "2022.3",
+  "author": {
+    "name": "Otus"
+  },
+  "dependencies": {
+    "com.otus.dialogue": "https://github.com/bbbushi/Dialog-Plugin.git?path=/com.otus.dialogue"
+  }
+}

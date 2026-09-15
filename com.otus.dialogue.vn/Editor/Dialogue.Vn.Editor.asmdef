@@ -1,0 +1,13 @@
+{
+    "name": "Dialogue.Vn.Editor",
+    "references": [
+        "Dialogue",
+        "Dialogue.Editor",
+        "Dialogue.Vn",
+        "Unity.TextMeshPro"
+    ],
+    "autoReferenced": true,
+    "includePlatforms": [
+        "Editor"
+    ]
+}

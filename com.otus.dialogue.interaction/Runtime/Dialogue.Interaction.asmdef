@@ -1,0 +1,7 @@
+{
+    "name": "Dialogue.Interaction",
+    "references": [
+        "Dialogue"
+    ],
+    "autoReferenced": true
+}

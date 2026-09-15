@@ -24,6 +24,9 @@ public class DialogueAssetEditor : Editor
     private int _pendingDeleteChoiceNode = -1;
     private int _pendingDeleteChoiceIndex = -1;
     private int _pendingClearChoicesNode = -1;
+    // 进入命令删除同款「帧内登记、帧末执行」（理由同上）
+    private int _pendingDeleteCommandNode = -1;
+    private int _pendingDeleteCommandIndex = -1;
     private string _lastSyncMessage;
     private string _lastSyncForId;
     private List<DialogueIssue> _cachedIssues;
@@ -91,6 +94,12 @@ public class DialogueAssetEditor : Editor
         {
             ApplyPendingChoiceEdits();
         }
+
+        // 帧末统一执行进入命令删除（同款理由）
+        if (_pendingDeleteCommandNode >= 0)
+        {
+            ApplyPendingCommandEdits();
+        }
     }
 
     /// <summary>执行帧内登记的选项删除/清空：重新 Update 后按索引定位，一次 Apply 落盘。</summary>
@@ -116,6 +125,30 @@ public class DialogueAssetEditor : Editor
         if (clearNode >= 0 && clearNode < nodes.arraySize)
         {
             nodes.GetArrayElementAtIndex(clearNode).FindPropertyRelative("choices").ClearArray();
+        }
+
+        serializedObject.ApplyModifiedProperties();
+        _cachedIssues = null; // 结构已变，下帧重算校验
+        Repaint();
+    }
+
+    /// <summary>执行帧内登记的进入命令删除：重新 Update 后按索引定位，一次 Apply 落盘。</summary>
+    private void ApplyPendingCommandEdits()
+    {
+        int deleteNode = _pendingDeleteCommandNode;
+        int deleteCommand = _pendingDeleteCommandIndex;
+        _pendingDeleteCommandNode = _pendingDeleteCommandIndex = -1;
+
+        serializedObject.Update();
+        var nodes = serializedObject.FindProperty("nodes");
+
+        if (deleteNode >= 0 && deleteNode < nodes.arraySize)
+        {
+            var commands = nodes.GetArrayElementAtIndex(deleteNode).FindPropertyRelative("commands");
+            if (deleteCommand >= 0 && deleteCommand < commands.arraySize)
+            {
+                commands.DeleteArrayElementAtIndex(deleteCommand);
+            }
         }
 
         serializedObject.ApplyModifiedProperties();
@@ -322,6 +355,9 @@ public class DialogueAssetEditor : Editor
                 }
 
                 DrawChoicesSection(choicesProp, i, total);
+
+                var commandsProp = node.FindPropertyRelative("commands");
+                DrawCommandsSection(commandsProp, i);
 
                 // id 重命名同步提示
                 if (_lastSyncForId == idProp.stringValue && !string.IsNullOrEmpty(_lastSyncMessage))
@@ -623,6 +659,62 @@ public class DialogueAssetEditor : Editor
         {
             nextIdProp.stringValue = values[picked];
         }
+    }
+
+    // ---------- 进入命令（commands 列表，2.0 扩展点）----------
+
+    /// <summary>
+    /// 节点进入命令区：进入该句时逐条派发（Manager.CommandReceived）。core 只存不解释——
+    /// 语义归扩展包/项目脚本（如 vn 包解释 bgm=/sfx=）。空命令名由校验器抓。
+    /// </summary>
+    private void DrawCommandsSection(SerializedProperty commandsProp, int nodeIndex)
+    {
+        EditorGUILayout.Space(2);
+        EditorGUILayout.LabelField("进入命令（扩展）", EditorStyles.boldLabel);
+        EditorGUI.indentLevel++;
+
+        for (int c = 0; c < commandsProp.arraySize; c++)
+        {
+            var command = commandsProp.GetArrayElementAtIndex(c);
+            var nameProp = command.FindPropertyRelative("name");
+            var valueProp = command.FindPropertyRelative("value");
+
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                EditorGUILayout.PropertyField(nameProp,
+                    new GUIContent("命令", "如 bgm / sfx / shake——进入该句时派发给订阅方，语义由扩展包或项目脚本定义"), GUILayout.MinWidth(70));
+                EditorGUILayout.PropertyField(valueProp,
+                    new GUIContent("参数", "自由文本，如 森林.mp3"), GUILayout.MinWidth(100));
+
+                if (GUILayout.Button("−", EditorStyles.miniButton, GUILayout.Width(22)))
+                {
+                    _pendingDeleteCommandNode = nodeIndex;
+                    _pendingDeleteCommandIndex = c;
+                    // 不在此处删：等本帧绘制全部走完，帧末统一执行
+                }
+            }
+        }
+
+        if (commandsProp.arraySize == 0)
+        {
+            EditorGUILayout.LabelField("无进入命令（vn 扩展包用它解释 bgm=/sfx=，项目脚本可订阅自定义演出）", EditorStyles.miniLabel);
+        }
+
+        if (GUILayout.Button("＋ 添加命令", EditorStyles.miniButton, GUILayout.Width(90)))
+        {
+            AddCommand(commandsProp); // 追加不动其他元素，帧内安全；新行下一帧出现
+        }
+
+        EditorGUI.indentLevel--;
+    }
+
+    /// <summary>追加一条空进入命令（字段显式清空防脏数据）。</summary>
+    private static void AddCommand(SerializedProperty commandsProp)
+    {
+        commandsProp.arraySize++;
+        var added = commandsProp.GetArrayElementAtIndex(commandsProp.arraySize - 1);
+        added.FindPropertyRelative("name").stringValue = string.Empty;
+        added.FindPropertyRelative("value").stringValue = string.Empty;
     }
 
     // ---------- 数组操作 ----------

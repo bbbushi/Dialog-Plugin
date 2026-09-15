@@ -42,6 +42,8 @@
     "com.unity.modules.xr": "1.0.0"
   },
   "testables": [
-    "com.otus.dialogue"
+    "com.otus.dialogue",
+    "com.otus.dialogue.vn",
+    "com.otus.dialogue.interaction"
   ]
 }
